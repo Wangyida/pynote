@@ -296,6 +296,8 @@ def train_vae(files_img,
     ckpt_name : str, optional
         Checkpoints will be named as this, e.g. 'model.ckpt'
     """
+
+    tf.set_random_seed(15) 
     seed=15
     batch_img = create_input_pipeline(
         files=files_img,
