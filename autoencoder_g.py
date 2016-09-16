@@ -54,12 +54,50 @@ except ImportError:
           " to complete this assignment unless you restart jupyter"
           " notebook inside the directory created by extracting"
           " the zip file or cloning the github repo.")
+
+class ScanFile(object):
+    def __init__(self,directory,prefix=None,postfix='.jpg'):
+        self.directory=directory
+        self.prefix=prefix
+        self.postfix=postfix
+
+    def scan_files(self):
+        files_list=[]
+
+        for dirpath,dirnames,filenames in os.walk(self.directory):
+            '''''
+            dirpath is a string, the path to the directory.
+            dirnames is a list of the names of the subdirectories in dirpath (excluding '.' and '..').
+            filenames is a list of the names of the non-directory files in dirpath.
+            '''
+            for special_file in filenames:
+                if self.postfix:
+                    special_file.endswith(self.postfix)
+                    files_list.append(os.path.join(dirpath,special_file))
+                elif self.prefix:
+                    special_file.startswith(self.prefix)
+                    files_list.append(os.path.join(dirpath,special_file))
+                else:
+                    files_list.append(os.path.join(dirpath,special_file))
+
+        return files_list
+
+    def scan_subdir(self):
+        subdir_list=[]
+        for dirpath,dirnames,files in os.walk(self.directory):
+            subdir_list.append(dirpath)
+        return subdir_list
+
 # Get a list of jpg file (Only JPG works!)
-some_dir = '/Users/yidawang/Documents/database/annotated_img/aeroplane'
-another_dir = '/Users/yidawang/Documents/database/annotated_obj/aeroplane'
+some_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_img'
+scan=ScanFile(some_dir)
+files_img=scan.scan_files()
+another_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj'
+scan=ScanFile(another_dir)
+files_obj=scan.scan_files()
 input_shape = [100, 100, 3]
-files_img = [os.path.join(some_dir, file_i) for file_i in os.listdir(some_dir) if file_i.endswith('.jpg')]
-files_obj = [os.path.join(another_dir, file_i) for file_i in os.listdir(another_dir) if file_i.endswith('.jpg')]
+# files_img = [os.path.join(some_dir, file_i) for file_i in os.listdir(some_dir) if file_i.endswith('.jpg')]
+# files_obj = [os.path.join(another_dir, file_i) for file_i in os.listdir(another_dir) if file_i.endswith('.jpg')]
 
 # Train it!  Change these parameters!
 tf.reset_default_graph()
@@ -67,11 +105,11 @@ vae.train_vae(files_img,
               files_obj,
               input_shape,
               learning_rate=0.0001,
-              batch_size=100,
+              batch_size=225,
               n_epochs=50,
               n_examples=10,
-              crop_shape=[64, 64, 3],
-              crop_factor=0.8,
+              crop_shape=[81, 81, 3],
+              crop_factor=0.9,
               n_filters=[100, 100, 100, 100],
               n_hidden=256,
               n_code=50,

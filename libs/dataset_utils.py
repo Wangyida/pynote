@@ -13,7 +13,7 @@ from . import dft
 
 
 def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
-                          crop_factor=1.0, n_threads=4, seed=15):
+                          crop_factor=None, n_threads=4, seed=15):
     """Creates a pipefile from a list of image files.
     Includes batch generator/central crop/resizing options.
     The resulting generator will dequeue the images batch_size at a time until
@@ -73,7 +73,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     else:
         rsz_shape = [int(crop_shape[0] / crop_factor),
                      int(shape[1] / shape[0] * crop_shape[1] / crop_factor)]
-    rszs = tf.image.resize_images(imgs, rsz_shape[0], rsz_shape[1])
+    rszs = tf.image.resize_images(imgs, rsz_shape)
     crops = (tf.image.resize_image_with_crop_or_pad(
         rszs, crop_shape[0], crop_shape[1])
         if crop_shape is not None
@@ -96,7 +96,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
                                    capacity=capacity,
                                    min_after_dequeue=min_after_dequeue,
                                    num_threads=n_threads,
-                                   seed=15)
+                                   seed=seed)
 
     # alternatively, we could use shuffle_batch_join to use multiple reader
     # instances, or set shuffle_batch's n_threads to higher than 1.

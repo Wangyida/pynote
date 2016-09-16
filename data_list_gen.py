@@ -1,7 +1,7 @@
 import os
 
 class ScanFile(object):
-    def __init__(self,directory,prefix=None,postfix=None):
+    def __init__(self,directory,prefix=None,postfix='.jpg'):
         self.directory=directory
         self.prefix=prefix
         self.postfix=postfix
