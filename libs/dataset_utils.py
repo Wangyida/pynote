@@ -13,7 +13,7 @@ from . import dft
 
 
 def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
-                          crop_factor=None, n_threads=4, seed=15):
+                          crop_factor=None, n_threads=1, seed=1):
     """Creates a pipefile from a list of image files.
     Includes batch generator/central crop/resizing options.
     The resulting generator will dequeue the images batch_size at a time until
@@ -45,7 +45,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     # It will generate the list of file names.
     # We also specify it's capacity beforehand.
     producer = tf.train.string_input_producer(
-        files, capacity=len(files))
+        files, capacity=len(files), shuffle=False, seed=seed)
 
     # We need something which can open the files and read its contents.
     reader = tf.WholeFileReader()
