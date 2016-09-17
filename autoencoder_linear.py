@@ -59,6 +59,39 @@ except ImportError:
 
 # See how this works w/ Celeb Images or try your own dataset instead:
 
+class ScanFile(object):
+    def __init__(self,directory,prefix=None,postfix='.jpg'):
+        self.directory=directory
+        self.prefix=prefix
+        self.postfix=postfix
+
+    def scan_files(self):
+        files_list=[]
+
+        for dirpath,dirnames,filenames in os.walk(self.directory):
+            '''''
+            dirpath is a string, the path to the directory.
+            dirnames is a list of the names of the subdirectories in dirpath (excluding '.' and '..').
+            filenames is a list of the names of the non-directory files in dirpath.
+            '''
+            for special_file in filenames:
+                if self.postfix:
+                    special_file.endswith(self.postfix)
+                    files_list.append(os.path.join(dirpath,special_file))
+                elif self.prefix:
+                    special_file.startswith(self.prefix)
+                    files_list.append(os.path.join(dirpath,special_file))
+                else:
+                    files_list.append(os.path.join(dirpath,special_file))
+
+        return files_list
+
+    def scan_subdir(self):
+        subdir_list=[]
+        for dirpath,dirnames,files in os.walk(self.directory):
+            subdir_list.append(dirpath)
+        return subdir_list
+
 def get_myown_files(direc):
     files = [os.path.join(direc, file_i)
              for file_i in os.listdir(direc)
@@ -66,7 +99,9 @@ def get_myown_files(direc):
     return files
 
 def get_myown_imgs(direc):
-    return [plt.imread(f_i) for f_i in get_myown_files(direc)]
+    scan=ScanFile(direc)
+    files_img=scan.scan_files()
+    return [plt.imread(f_i) for f_i in files_img]
 
 # Write a function to preprocess/normalize an image, given its dataset object
 # (which stores the mean and standard deviation!)
@@ -80,9 +115,9 @@ def deprocess(norm_img, ds):
     img = norm_img * ds.std() + ds.mean()
     return img
 
-direc = '/Users/yidawang/Documents/database/annotated_img/aeroplane'
+direc = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_img/aeroplane'
 myown_img = get_myown_imgs(direc)
-direc = '/Users/yidawang/Documents/database/annotated_obj/aeroplane'
+direc = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj/aeroplane'
 myown_obj = get_myown_imgs(direc)
 
 

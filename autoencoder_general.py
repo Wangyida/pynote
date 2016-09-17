@@ -89,15 +89,15 @@ class ScanFile(object):
         return subdir_list
 
 # Get a list of jpg file (Only JPG works!)
-some_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_img'
-scan=ScanFile(some_dir)
-files_img=scan.scan_files()
-another_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj'
-scan=ScanFile(another_dir)
-files_obj=scan.scan_files()
+image_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_img'
+scan1=ScanFile(image_dir)
+files_img=scan1.scan_files()
+object_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj'
+scan2=ScanFile(object_dir)
+files_obj=scan2.scan_files()
 input_shape = [100, 100, 3]
-# files_img = [os.path.join(some_dir, file_i) for file_i in os.listdir(some_dir) if file_i.endswith('.jpg')]
-# files_obj = [os.path.join(another_dir, file_i) for file_i in os.listdir(another_dir) if file_i.endswith('.jpg')]
+# files_img = [os.path.join(image_dir, file_i) for file_i in os.listdir(image_dir) if file_i.endswith('.jpg')]
+# files_obj = [os.path.join(object_dir, file_i) for file_i in os.listdir(object_dir) if file_i.endswith('.jpg')]
 
 # Train it!  Change these parameters!
 tf.reset_default_graph()

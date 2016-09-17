@@ -298,6 +298,15 @@ def train_vae(files_img,
     """
     tf.set_random_seed(1) 
     seed=1
+    batch_obj = create_input_pipeline(
+        files=files_obj,
+        batch_size=batch_size,
+        n_epochs=n_epochs,
+        crop_shape=crop_shape,
+        crop_factor=crop_factor,
+        shape=input_shape,
+        seed=seed)
+    
     batch_img = create_input_pipeline(
         files=files_img,
         batch_size=batch_size,
@@ -307,14 +316,6 @@ def train_vae(files_img,
         shape=input_shape,
         seed=seed)
 
-    batch_obj = create_input_pipeline(
-        files=files_img,
-        batch_size=batch_size,
-        n_epochs=n_epochs,
-        crop_shape=crop_shape,
-        crop_factor=crop_factor,
-        shape=input_shape,
-        seed=seed)
 
     ae = VAE(input_shape=[None] + crop_shape,
              convolutional=convolutional,
