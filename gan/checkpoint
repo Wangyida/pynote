@@ -1,0 +1,3 @@
+model_checkpoint_path: "vaegan.ckpt-200"
+all_model_checkpoint_paths: "vaegan.ckpt-100"
+all_model_checkpoint_paths: "vaegan.ckpt-200"
