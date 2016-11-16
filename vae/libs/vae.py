@@ -140,6 +140,10 @@ def VAE(input_shape=[None, 784],
 
             z_mu = utils.linear(h, n_code, name='mu')[0]
             z_log_sigma = 0.5 * utils.linear(h, n_code, name='log_sigma')[0]
+            # modified by yidawang
+            # s, u, v = tf.svd(z_log_sigma)
+            # z_log_sigma = tf.matmul(tf.matmul(u, tf.diag(s)), tf.transpose(v))
+            # end yidawang
 
             # Sample from noise distribution p(eps) ~ N(0, 1)
             epsilon = tf.random_normal(
@@ -245,7 +249,7 @@ def train_vae(files_img,
               activation=tf.nn.relu,
               img_step=100,
               save_step=100,
-              ckpt_name="vae.ckpt"):
+              ckpt_name="./vae.ckpt"):
     """General purpose training of a (Variational) (Convolutional) Autoencoder.
 
     Supply a list of file paths to images, and this will do everything else.
@@ -297,7 +301,7 @@ def train_vae(files_img,
         Checkpoints will be named as this, e.g. 'model.ckpt'
     """
     tf.set_random_seed(1)
-    seed=1
+    seed=2
     batch_obj = create_input_pipeline(
         files=files_obj,
         batch_size=batch_size,
@@ -341,7 +345,8 @@ def train_vae(files_img,
         learning_rate=learning_rate).minimize(ae['cost'])
 
     # We create a session to use the graph
-    sess = tf.Session()
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+    sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
     sess.run(tf.initialize_all_variables())
 

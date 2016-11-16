@@ -45,15 +45,7 @@ except ImportError:
 # This cell includes the provided libraries from the zip file
 # and a library for displaying images from ipython, which
 # we will use to display the gif
-try:
-    from libs import utils, gif, datasets, dataset_utils, vae, dft
-except ImportError:
-    print("Make sure you have started notebook in the same directory" +
-          " as the provided zip file which includes the 'libs' folder" +
-          " and the file 'utils.py' inside of it.  You will NOT be able"
-          " to complete this assignment unless you restart jupyter"
-          " notebook inside the directory created by extracting"
-          " the zip file or cloning the github repo.")
+from libs import utils, gif, datasets, dataset_utils, vae, dft
 
 class ScanFile(object):
     def __init__(self,directory,prefix=None,postfix='.jpg'):
@@ -89,10 +81,10 @@ class ScanFile(object):
         return subdir_list
 
 # Get a list of jpg file (Only JPG works!)
-image_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_img'
+image_dir = '/home/whdeng-k40/experiment_yida/data/annotated_img'
 scan1=ScanFile(image_dir)
 files_img=scan1.scan_files()
-object_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj'
+object_dir = '/home/whdeng-k40/experiment_yida/data/annotated_obj'
 scan2=ScanFile(object_dir)
 files_obj=scan2.scan_files()
 assert len(files_obj) == len(files_img)
@@ -107,7 +99,7 @@ vae.train_vae(files_img,
               files_obj,
               input_shape,
               learning_rate=0.0001,
-              batch_size=225,
+              batch_size=64,
               n_epochs=50,
               n_examples=10,
               crop_shape=[95, 95, 3],
@@ -123,4 +115,4 @@ vae.train_vae(files_img,
               activation=tf.nn.relu,
               img_step=100,
               save_step=100,
-              ckpt_name="vae.ckpt")
+              ckpt_name="./vae.ckpt")

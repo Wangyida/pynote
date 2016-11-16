@@ -46,10 +46,10 @@ class ScanFile(object):
         return subdir_list
 
 # Get a list of jpg file (Only JPG works!)
-image_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_img'
+image_dir = '/home/whdeng-k40/experiment_yida/data/annotated_img'
 scan1=ScanFile(image_dir)
 files_img=scan1.scan_files()
-object_dir = '/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj'
+object_dir = '/home/whdeng-k40/experiment_yida/data/annotated_obj'
 scan2=ScanFile(object_dir)
 files_obj=scan2.scan_files()
 assert len(files_obj) == len(files_img)
@@ -312,7 +312,7 @@ def VAE(input_shape=[None, 784],
     x_obj = tf.placeholder(tf.float32, input_shape, 'x_obj')
 
     with tf.variable_scope('encoder'):
-        encoding = encoder(x=x,
+        encoding = encoder(x=x_img,
                            n_hidden=n_hidden,
                            convolutional=convolutional,
                            dimensions=n_filters,
@@ -429,7 +429,7 @@ def VAEGAN(input_shape=[None, 784],
                                    activation=activation)
 
     with tf.variable_scope('discriminator'):
-        D_real = discriminator(x_img,
+        D_real = discriminator(x_obj,
                                filter_sizes=filter_sizes,
                                n_filters=n_filters,
                                activation=activation)
@@ -493,7 +493,7 @@ def train_vaegan(files_img,
                  variational=True,
                  filter_sizes=[3, 3, 3, 3],
                  activation=tf.nn.elu,
-                 ckpt_name="vaegan.ckpt"):
+                 ckpt_name="./vaegan.ckpt"):
     """Summary
 
     Parameters
@@ -587,7 +587,8 @@ def train_vaegan(files_img,
         var_list=[var_i for var_i in tf.trainable_variables()
                   if var_i.name.startswith('discriminator')])
 
-    sess = tf.Session()
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.35)
+    sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
     sess.run(tf.initialize_all_variables())
     coord = tf.train.Coordinator()
@@ -621,15 +622,16 @@ def train_vaegan(files_img,
             batch_xs_img = sess.run(batch_img) / 255.0
             batch_xs_obj = sess.run(batch_obj) / 255.0
             batch_zs = np.random.randn(batch_size, n_code).astype(np.float32)
-            real_cost, fake_cost, _ = sess.run([
-                ae['loss_real'], ae['loss_fake'], opt_enc],
+            real_cost, fake_cost, enc_cost, gen_cost, _ = sess.run([
+                ae['loss_real'], ae['loss_fake'], ae['loss_enc'], ae['loss_gen'], opt_enc],
                 feed_dict={
                     ae['x_img']: batch_xs_img,
                     ae['x_obj']: batch_xs_obj,
+                    ae['z_samp']: batch_zs,
                     ae['gamma']: 0.5})
             real_cost = -np.mean(real_cost)
             fake_cost = -np.mean(fake_cost)
-            print('real:', real_cost, '/ fake:', fake_cost)
+            print('real:', real_cost, '/ fake:', fake_cost, '/ enc:', enc_cost, '/ gen:', gen_cost)
 
             gen_update = True
             dis_update = True
