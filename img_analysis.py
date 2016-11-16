@@ -44,7 +44,7 @@ class ScanFile(object):
         return subdir_list
 
 if __name__=="__main__":
-	dir=r"/Users/yidawang/Documents/database/PASCAL3D+_release1.1/real_annotated/PASCAL"
+	dir=r"/home/yida/Documents/buildboat/slic_superpixel/data/annotated_obj"
 	scan=ScanFile(dir)
 	subdirs=scan.scan_subdir()
 	for subdir in subdirs[1:]:
@@ -70,13 +70,13 @@ if __name__=="__main__":
 		# ds = datasets.CIFAR10(flatten=False)
 
 		mean_img = ds.mean().astype(np.float32)
-		name='./mean_std/pascal_mean_'+subdir.split('/')[-1]+'.png'
+		name='./mean_std/render_mean_'+subdir.split('/')[-1]+'.png'
 		plt.imsave(name, mean_img.astype(np.uint8))
 
 		std_img = ds.std().astype(np.float32)
 		plt.imshow(std_img.astype(np.uint8))
 
 		std_img = np.mean(std_img, axis=2).astype(np.float32)
-		name='./mean_std/pascal_std_'+subdir.split('/')[-1]+'.png'
+		name='./mean_std/render_std_'+subdir.split('/')[-1]+'.png'
 		plt.imsave(name, std_img.astype(np.uint8))
-	os.system('montage ./mean_std/shapenet*.png ./mean_std/imagenet*.png ./mean_std/pascal*.png -geometry +1+1 -tile 12x6 montage.png | bash /Users/yidawang/Documents/buildboat/shnote/imgcat.sh ./montage.png')
+	os.system('montage ./mean_std/render*.png ./mean_std/shapenet*.png ./mean_std/imagenet*.png ./mean_std/pascal*.png -bordercolor white -borderwidth 0 -geometry +4+1 -tile 12x8 montage.png')
