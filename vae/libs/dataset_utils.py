@@ -13,7 +13,7 @@ from . import dft
 
 
 def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
-                          crop_factor=None, n_threads=1, seed=1):
+                          crop_factor=None, n_threads=1, seed=1, use_csv=False):
     """Creates a pipefile from a list of image files.
     Includes batch generator/central crop/resizing options.
     The resulting generator will dequeue the images batch_size at a time until
@@ -44,20 +44,34 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     # Put simply, this is the entry point of the computational graph.
     # It will generate the list of file names.
     # We also specify it's capacity beforehand.
-    producer = tf.train.string_input_producer(
-        files, capacity=len(files), shuffle=True, seed=seed)
+    if use_csv:
+        filename_queue = tf.train.string_input_producer(
+            [files], shuffle=True, seed=seed)
+        reader = tf.TextLineReader()
+        _, csv_content = reader.read(filename_queue)
 
-    # We need something which can open the files and read its contents.
-    reader = tf.WholeFileReader()
+        record_defaults = [[""], [1]]
+        img_path, img_cat = tf.decode_csv(
+            csv_content, record_defaults=record_defaults)
+        im_content = tf.read_file(img_path)
+        imgs = tf.image.decode_jpeg(
+            im_content,
+            channels=3 if len(shape) > 2 and shape[2] == 3 else 0)
+    else:
+        producer = tf.train.string_input_producer(
+            files, capacity=len(files), shuffle=True, seed=seed)
 
-    # We pass the filenames to this object which can read the file's contents.
-    # This will create another queue running which dequeues the previous queue.
-    keys, vals = reader.read(producer)
+        # We need something which can open the files and read its contents.
+        reader = tf.WholeFileReader()
 
-    # And then have to decode its contents as we know it is a jpeg image
-    imgs = tf.image.decode_jpeg(
-        vals,
-        channels=3 if len(shape) > 2 and shape[2] == 3 else 0)
+        # We pass the filenames to this object which can read the file's contents.
+        # This will create another queue running which dequeues the previous queue.
+        keys, vals = reader.read(producer)
+
+        # And then have to decode its contents as we know it is a jpeg image
+        imgs = tf.image.decode_jpeg(
+            vals,
+            channels=3 if len(shape) > 2 and shape[2] == 3 else 0)
 
     # We have to explicitly define the shape of the tensor.
     # This is because the decode_jpeg operation is still a node in the graph
@@ -73,7 +87,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     else:
         rsz_shape = [int(crop_shape[0] / crop_factor),
                      int(shape[1] / shape[0] * crop_shape[1] / crop_factor)]
-    rszs = tf.image.resize_images(imgs, rsz_shape)
+    rszs = tf.image.resize_images(imgs, rsz_shape[0], rsz_shape[1])
     crops = (tf.image.resize_image_with_crop_or_pad(
         rszs, crop_shape[0], crop_shape[1])
         if crop_shape is not None
@@ -90,21 +104,22 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     capacity = min_after_dequeue + (n_threads + 1) * batch_size
 
     # Randomize the order and output batches of batch_size.
-    #batch = tf.train.shuffle_batch([crops],
-    #                               enqueue_many=False,
-    #                               batch_size=batch_size,
-    #                               capacity=capacity,
-    #                               min_after_dequeue=min_after_dequeue,
-    #                               num_threads=n_threads,
-    #                               seed=seed)
+    """
+    batch = tf.train.shuffle_batch([crops],
+                                   enqueue_many=False,
+                                   batch_size=batch_size,
+                                   capacity=capacity,
+                                   min_after_dequeue=min_after_dequeue,
+                                   num_threads=n_threads,
+                                   seed=seed)
 
+    """
     batch = tf.train.batch([crops],
                            batch_size=batch_size,
                            num_threads=n_threads,
                            capacity=capacity)
     # alternatively, we could use shuffle_batch_join to use multiple reader
     # instances, or set shuffle_batch's n_threads to higher than 1.
-
     return batch
 
 

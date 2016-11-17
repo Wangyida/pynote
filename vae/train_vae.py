@@ -80,15 +80,20 @@ class ScanFile(object):
             subdir_list.append(dirpath)
         return subdir_list
 
-# Get a list of jpg file (Only JPG works!)
-image_dir = '/home/whdeng-k40/experiment_yida/data/annotated_img'
-scan1=ScanFile(image_dir)
-files_img=scan1.scan_files()
-object_dir = '/home/whdeng-k40/experiment_yida/data/annotated_obj'
-scan2=ScanFile(object_dir)
-files_obj=scan2.scan_files()
-assert len(files_obj) == len(files_img)
-print('Files assertion passed, ', len(files_img), 'training files in total')
+use_csv=True
+if use_csv:
+    files_img="/Users/yidawang/Documents/pynote/list_annotated_img.csv"
+    files_obj="/Users/yidawang/Documents/pynote/list_annotated_obj.csv"
+else:
+    # Get a list of jpg file (Only JPG works!)
+    image_dir = '/Users/yidawang/Documents/database/annotated_data/annotated_img'
+    scan1=ScanFile(image_dir)
+    files_img=scan1.scan_files()
+    object_dir = '/Users/yidawang/Documents/database/annotated_data/annotated_obj'
+    scan2=ScanFile(object_dir)
+    files_obj=scan2.scan_files()
+    assert len(files_obj) == len(files_img)
+    print('Files assertion passed, ', len(files_img), 'training files in total')
 input_shape = [100, 100, 3]
 # files_img = [os.path.join(image_dir, file_i) for file_i in os.listdir(image_dir) if file_i.endswith('.jpg')]
 # files_obj = [os.path.join(object_dir, file_i) for file_i in os.listdir(object_dir) if file_i.endswith('.jpg')]
@@ -98,6 +103,7 @@ tf.reset_default_graph()
 vae.train_vae(files_img,
               files_obj,
               input_shape,
+              use_csv=use_csv,
               learning_rate=0.0001,
               batch_size=64,
               n_epochs=50,

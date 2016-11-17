@@ -1,4 +1,5 @@
 import os
+import random
 
 class ScanFile(object):
     def __init__(self,directory,prefix=None,postfix='.jpg'):
@@ -34,7 +35,7 @@ class ScanFile(object):
         return subdir_list
 
 if __name__=="__main__":
-    dir=r"/Users/yidawang/Documents/database/annotated_img"
+    dir=r"/Users/yidawang/Documents/database/annotated_data/annotated_obj"
     scan=ScanFile(dir)
     subdirs=scan.scan_subdir()
     files=scan.scan_files()
@@ -43,7 +44,11 @@ if __name__=="__main__":
     for subdir in subdirs:
         print subdir
 
-    file_object = open('list_annotated_shapenet.txt', 'w')
+    file_object = open('list_annotated_obj.csv', 'w')
+    # shuffle the list
+    random.seed(1)
+    random.shuffle(files)
+
     for file in files:
-        file_object.write(file + ' ' + str(int(file[-13:-11])) + '\n')
-    print "The files scaned are already written in txt"
+        file_object.write(file + ',' + str(int(file[-13:-11])) + '\n')
+    print "The files scaned are already written in csv"

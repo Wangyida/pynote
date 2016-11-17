@@ -232,6 +232,7 @@ def VAE(input_shape=[None, 784],
 def train_vae(files_img,
               files_obj,
               input_shape,
+              use_csv=False,
               learning_rate=0.0001,
               batch_size=100,
               n_epochs=50,
@@ -301,7 +302,7 @@ def train_vae(files_img,
         Checkpoints will be named as this, e.g. 'model.ckpt'
     """
     tf.set_random_seed(1)
-    seed=2
+    seed=1
     batch_obj = create_input_pipeline(
         files=files_obj,
         batch_size=batch_size,
@@ -309,7 +310,8 @@ def train_vae(files_img,
         crop_shape=crop_shape,
         crop_factor=crop_factor,
         shape=input_shape,
-        seed=seed)
+        seed=seed,
+        use_csv=use_csv)
 
     batch_img = create_input_pipeline(
         files=files_img,
@@ -318,7 +320,8 @@ def train_vae(files_img,
         crop_shape=crop_shape,
         crop_factor=crop_factor,
         shape=input_shape,
-        seed=seed)
+        seed=seed,
+        use_csv=use_csv)
 
 
     ae = VAE(input_shape=[None] + crop_shape,
@@ -386,14 +389,15 @@ def train_vae(files_img,
                 epoch_i += 1
 
             if batch_i % img_step == 0:
-                # Plot example reconstructions from latent layer
-                recon = sess.run(
-                    ae['y'], feed_dict={
-                        ae['z']: zs,
-                        ae['train']: False,
-                        ae['keep_prob']: 1.0})
-                utils.montage(recon.reshape([-1] + crop_shape),
-                              'manifold_%08d.png' % t_i)
+                if variational:
+                    # Plot example reconstructions from latent layer
+                    recon = sess.run(
+                        ae['y'], feed_dict={
+                            ae['z']: zs,
+                            ae['train']: False,
+                            ae['keep_prob']: 1.0})
+                    utils.montage(recon.reshape([-1] + crop_shape),
+                                  'manifold_%08d.png' % t_i)
 
                 # Plot example reconstructions
                 recon = sess.run(
