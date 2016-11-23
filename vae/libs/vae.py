@@ -6,12 +6,95 @@ Copyright Parag K. Mital, January 2016
 """
 import tensorflow as tf
 import numpy as np
+import sys
 import os
 from libs.dataset_utils import create_input_pipeline
 from libs.datasets import CELEB, MNIST
 from libs.batch_norm import batch_norm
 from libs import utils
 
+slim = tf.contrib.slim
+trunc_normal = lambda stddev: tf.truncated_normal_initializer(0.0, stddev)
+
+def alexnet_v2_arg_scope(weight_decay=0.0005):
+  with slim.arg_scope([slim.conv2d, slim.fully_connected],
+                      activation_fn=tf.nn.relu,
+                      biases_initializer=tf.constant_initializer(0.1),
+                      weights_regularizer=slim.l2_regularizer(weight_decay)):
+    with slim.arg_scope([slim.conv2d], padding='SAME'):
+      with slim.arg_scope([slim.max_pool2d], padding='VALID') as arg_sc:
+        return arg_sc
+
+def alexnet_v2(inputs,
+               num_classes=13,
+               is_training=True,
+               dropout_keep_prob=0.5,
+               spatial_squeeze=True,
+               scope='alexnet_v2'):
+  """AlexNet version 2.
+
+  Described in: http://arxiv.org/pdf/1404.5997v2.pdf
+  Parameters from:
+  github.com/akrizhevsky/cuda-convnet2/blob/master/layers/
+  layers-imagenet-1gpu.cfg
+
+  Note: All the fully_connected layers have been transformed to conv2d layers.
+        To use in classification mode, resize input to 224x224. To use in fully
+        convolutional mode, set spatial_squeeze to false.
+        The LRN layers have been removed and change the initializers from
+        random_normal_initializer to xavier_initializer.
+
+  Args:
+    inputs: a tensor of size [batch_size, height, width, channels].
+    num_classes: number of predicted classes.
+    is_training: whether or not the model is being trained.
+    dropout_keep_prob: the probability that activations are kept in the dropout
+      layers during training.
+    spatial_squeeze: whether or not should squeeze the spatial dimensions of the
+      outputs. Useful to remove unnecessary dimensions for classification.
+    scope: Optional scope for the variables.
+
+  Returns:
+    the last op containing the log predictions and end_points dict.
+  """
+  with tf.variable_scope(scope, 'alexnet_v2', [inputs]) as sc:
+    end_points_collection = sc.original_name_scope + '_end_points'
+    # Collect outputs for conv2d, fully_connected and max_pool2d.
+    with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
+                        outputs_collections=[end_points_collection]):
+      net = slim.conv2d(inputs, 64, [11, 11], 4, padding='VALID',
+                        scope='conv1')
+      net = slim.max_pool2d(net, [3, 3], 2, scope='pool1')
+      net = slim.conv2d(net, 192, [5, 5], scope='conv2')
+      net = slim.max_pool2d(net, [3, 3], 2, scope='pool2')
+      net = slim.conv2d(net, 384, [3, 3], scope='conv3')
+      net = slim.conv2d(net, 384, [3, 3], scope='conv4')
+      net = slim.conv2d(net, 256, [3, 3], scope='conv5')
+      net = slim.max_pool2d(net, [3, 3], 2, scope='pool5')
+
+      # Use conv2d instead of fully_connected layers.
+      with slim.arg_scope([slim.conv2d],
+                          weights_initializer=trunc_normal(0.005),
+                          biases_initializer=tf.constant_initializer(0.1)):
+        net = slim.conv2d(net, 4096, [5, 5], padding='VALID',
+                          scope='fc6')
+        net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
+                           scope='dropout6')
+        net = slim.conv2d(net, 4096, [1, 1], scope='fc7')
+        net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
+                           scope='dropout7')
+        net = slim.conv2d(net, num_classes, [1, 1],
+                          activation_fn=None,
+                          normalizer_fn=None,
+                          biases_initializer=tf.zeros_initializer,
+                          scope='fc8')
+
+      # Convert end_points_collection into a end_point dict.
+      end_points = slim.utils.convert_collection_to_dict(end_points_collection)
+      if spatial_squeeze:
+        net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
+        end_points[sc.name + '/fc8'] = net
+      return net, end_points
 
 def VAE(input_shape=[None, 784],
         n_filters=[64, 64, 64],
@@ -22,7 +105,8 @@ def VAE(input_shape=[None, 784],
         dropout=False,
         denoising=False,
         convolutional=False,
-        variational=False):
+        variational=False,
+        softmax=False):
     """(Variational) (Convolutional) (Denoising) Autoencoder.
 
     Uses tied weights.
@@ -89,17 +173,18 @@ def VAE(input_shape=[None, 784],
         }
     """
     # network input / placeholders for train (bn) and dropout
-    x = tf.placeholder(tf.float32, input_shape, 'x')
+    x_img = tf.placeholder(tf.float32, input_shape, 'x_img')
     x_obj = tf.placeholder(tf.float32, input_shape, 'x_obj')
     phase_train = tf.placeholder(tf.bool, name='phase_train')
     keep_prob = tf.placeholder(tf.float32, name='keep_prob')
     corrupt_prob = tf.placeholder(tf.float32, [1])
+    x_label = tf.placeholder(tf.int32, [None,1], 'x_label')
 
     if denoising:
-        current_input = utils.corrupt(x) * corrupt_prob + x * (1 - corrupt_prob)
+        current_input = utils.corrupt(x_img) * corrupt_prob + x_img * (1 - corrupt_prob)
 
     # 2d -> 4d if convolution
-    x_tensor = utils.to_tensor(x) if convolutional else x
+    x_tensor = utils.to_tensor(x_img) if convolutional else x_img
     current_input = x_tensor
 
     Ws = []
@@ -147,7 +232,7 @@ def VAE(input_shape=[None, 784],
 
             # Sample from noise distribution p(eps) ~ N(0, 1)
             epsilon = tf.random_normal(
-                tf.pack([tf.shape(x)[0], n_code]))
+                tf.pack([tf.shape(x_img)[0], n_code]))
 
             # Sample from posterior
             z = z_mu + tf.mul(epsilon, tf.exp(z_log_sigma))
@@ -222,8 +307,23 @@ def VAE(input_shape=[None, 784],
         # just optimize l2 loss
         cost = tf.reduce_mean(loss_x)
 
+    # Alexnet for clasification based on softmax using TensorFlow slim
+    # if softmax:
+    # alexnet = tf.contrib.slim.nets.alexnet
+    y_concat = tf.concat(3, (tf.image.resize_images(x_img, [224, 224]),
+        tf.image.resize_images(y, [224, 224])))
+    with slim.arg_scope(alexnet_v2_arg_scope()):
+        predictions, end_points = alexnet_v2(y_concat)
+    x_label_onehot = tf.one_hot(x_label, 13, 1, 0)
+    x_label_onehot = tf.squeeze(x_label_onehot, [1])
+    slim.losses.softmax_cross_entropy(predictions, x_label_onehot)
+    loss_s = slim.losses.get_total_loss()
+    cost = tf.reduce_mean(cost + loss_s)
+    acc = tf.nn.in_top_k(predictions, tf.squeeze(x_label, [1]), 1)
+
     return {'cost': cost, 'Ws': Ws,
-            'x': x, 'x_obj': x_obj, 'z': z, 'y': y,
+            'x_img': x_img, 'x_obj': x_obj, 'x_label': x_label,
+            'z': z, 'y': y, 'acc': acc,
             'keep_prob': keep_prob,
             'corrupt_prob': corrupt_prob,
             'train': phase_train}
@@ -303,7 +403,7 @@ def train_vae(files_img,
     """
     tf.set_random_seed(1)
     seed=1
-    batch_obj = create_input_pipeline(
+    batch_obj, batch_label_o = create_input_pipeline(
         files=files_obj,
         batch_size=batch_size,
         n_epochs=n_epochs,
@@ -313,7 +413,7 @@ def train_vae(files_img,
         seed=seed,
         use_csv=use_csv)
 
-    batch_img = create_input_pipeline(
+    batch_img, batch_label_i = create_input_pipeline(
         files=files_img,
         batch_size=batch_size,
         n_epochs=n_epochs,
@@ -348,7 +448,7 @@ def train_vae(files_img,
         learning_rate=learning_rate).minimize(ae['cost'])
 
     # We create a session to use the graph
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.65)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
     sess.run(tf.initialize_all_variables())
@@ -375,13 +475,16 @@ def train_vae(files_img,
     utils.montage(test_xs, 'test_xs_img.png')
     test_xs = sess.run(batch_obj) / 255.0
     utils.montage(test_xs, 'test_xs_obj.png')
+    test_xs_label = sess.run(batch_label_i)
     try:
         while not coord.should_stop():
             batch_i += 1
             batch_xs_img = sess.run(batch_img) / 255.0
             batch_xs_obj = sess.run(batch_obj) / 255.0
+            batch_xs_label = sess.run(batch_label_i)
             train_cost = sess.run([ae['cost'], optimizer], feed_dict={
-                ae['x']: batch_xs_img, ae['x_obj']: batch_xs_obj, ae['train']: True,
+                ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
+                ae['x_label']: batch_xs_label, ae['train']: True,
                 ae['keep_prob']: keep_prob})[0]
             cost += train_cost
             if batch_i % n_files == 0:
@@ -401,7 +504,7 @@ def train_vae(files_img,
 
                 # Plot example reconstructions
                 recon = sess.run(
-                    ae['y'], feed_dict={ae['x']: test_xs,
+                    ae['y'], feed_dict={ae['x_img']: test_xs,
                                         ae['train']: False,
                                         ae['keep_prob']: 1.0})
                 utils.montage(recon.reshape([-1] + crop_shape),
@@ -414,6 +517,12 @@ def train_vae(files_img,
                 saver.save(sess, "./" + ckpt_name,
                            global_step=batch_i,
                            write_meta_graph=False)
+                acc = sess.run(
+                    ae['acc'], feed_dict={ae['x_img']: test_xs,
+                                        ae['x_label']: test_xs_label,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0})
+                print("Accuracy = %.3f" % (acc.tolist().count(True)/acc.size))
     except tf.errors.OutOfRangeError:
         print('Done.')
     finally:

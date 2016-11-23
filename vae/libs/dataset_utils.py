@@ -51,8 +51,9 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
         _, csv_content = reader.read(filename_queue)
 
         record_defaults = [[""], [1]]
-        img_path, img_cat = tf.decode_csv(
+        img_path, img_cat_temp = tf.decode_csv(
             csv_content, record_defaults=record_defaults)
+        img_cat = tf.pack([img_cat_temp])
         im_content = tf.read_file(img_path)
         imgs = tf.image.decode_jpeg(
             im_content,
@@ -87,7 +88,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     else:
         rsz_shape = [int(crop_shape[0] / crop_factor),
                      int(shape[1] / shape[0] * crop_shape[1] / crop_factor)]
-    rszs = tf.image.resize_images(imgs, rsz_shape[0], rsz_shape[1])
+    rszs = tf.image.resize_images(imgs, rsz_shape)
     crops = (tf.image.resize_image_with_crop_or_pad(
         rszs, crop_shape[0], crop_shape[1])
         if crop_shape is not None
@@ -114,13 +115,13 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
                                    seed=seed)
 
     """
-    batch = tf.train.batch([crops],
+    batch_image, batch_label = tf.train.batch([crops, img_cat],
                            batch_size=batch_size,
                            num_threads=n_threads,
                            capacity=capacity)
     # alternatively, we could use shuffle_batch_join to use multiple reader
     # instances, or set shuffle_batch's n_threads to higher than 1.
-    return batch
+    return batch_image, batch_label
 
 
 def download_and_extract_tar(path, dst):
