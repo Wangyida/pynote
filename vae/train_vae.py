@@ -1,5 +1,6 @@
 # First check the Python version
 import sys
+import csv
 if sys.version_info < (3,4):
     print('You are running an older version of Python!\n\n' \
           'You should consider updating to Python 3.4.0 or ' \
@@ -82,8 +83,18 @@ class ScanFile(object):
 
 use_csv=True
 if use_csv:
-    files_img="/Users/yidawang/Documents/pynote/list_annotated_img.csv"
-    files_obj="/Users/yidawang/Documents/pynote/list_annotated_obj.csv"
+    files_img = "/Users/yidawang/Documents/pynote/list_annotated_img.csv"
+    files_obj = "/Users/yidawang/Documents/pynote/list_annotated_obj.csv"
+    with open(files_img,"r") as f:
+        reader = csv.reader(f,delimiter = ",")
+        data = list(reader)
+        n_files_img = len(data)
+    with open(files_obj,"r") as f:
+        reader = csv.reader(f,delimiter = ",")
+        data = list(reader)
+        n_files_obj = len(data)
+    assert n_files_img == n_files_obj
+    print('Files assertion passed, ', n_files_img, 'training files in total')
 else:
     # Get a list of jpg file (Only JPG works!)
     image_dir = '/Users/yidawang/Documents/database/annotated_data/annotated_img'

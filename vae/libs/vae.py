@@ -7,6 +7,7 @@ Copyright Parag K. Mital, January 2016
 import tensorflow as tf
 import numpy as np
 import sys
+import csv
 import os
 from libs.dataset_utils import create_input_pipeline
 from libs.datasets import CELEB, MNIST
@@ -26,7 +27,7 @@ def alexnet_v2_arg_scope(weight_decay=0.0005):
         return arg_sc
 
 def alexnet_v2(inputs,
-               num_classes=13,
+               num_classes=12,
                is_training=True,
                dropout_keep_prob=0.5,
                spatial_squeeze=True,
@@ -310,19 +311,25 @@ def VAE(input_shape=[None, 784],
     # Alexnet for clasification based on softmax using TensorFlow slim
     # if softmax:
     # alexnet = tf.contrib.slim.nets.alexnet
-    y_concat = tf.concat(3, (tf.image.resize_images(x_img, [224, 224]),
+    corrupt_ratio = 1
+    x_img_corrupt = tf.mul(x_img, tf.cast(tf.random_uniform(shape=tf.shape(x_img),
+                                               minval=0,
+                                               maxval=2,
+                                               dtype=tf.int32), tf.float32))
+    x_img_corrupt = x_img_corrupt * corrupt_ratio + x_img * (1 - corrupt_ratio)
+    y_concat = tf.concat(3, (tf.image.resize_images(x_img_corrupt, [224, 224]),
         tf.image.resize_images(y, [224, 224])))
     with slim.arg_scope(alexnet_v2_arg_scope()):
         predictions, end_points = alexnet_v2(y_concat)
-    x_label_onehot = tf.one_hot(x_label, 13, 1, 0)
-    x_label_onehot = tf.squeeze(x_label_onehot, [1])
+    x_label_onehot = tf.squeeze(tf.one_hot(x_label, 12, 1, 0), [1])
     slim.losses.softmax_cross_entropy(predictions, x_label_onehot)
-    loss_s = slim.losses.get_total_loss()
-    cost = tf.reduce_mean(cost + loss_s)
+    cost_s = slim.losses.get_total_loss()
+    # cost = tf.reduce_mean(cost + cost_s)
     acc = tf.nn.in_top_k(predictions, tf.squeeze(x_label, [1]), 1)
 
-    return {'cost': cost, 'Ws': Ws,
+    return {'cost': cost, 'cost_s': cost_s, 'Ws': Ws,
             'x_img': x_img, 'x_obj': x_obj, 'x_label': x_label,
+            'x_label_onehot': x_label_onehot, 'predictions': predictions,
             'z': z, 'y': y, 'acc': acc,
             'keep_prob': keep_prob,
             'corrupt_prob': corrupt_prob,
@@ -444,11 +451,12 @@ def train_vae(files_img,
         -1.0, 1.0, [4, n_code]).astype(np.float32)
     zs = utils.make_latent_manifold(zs, n_examples)
 
-    optimizer = tf.train.AdamOptimizer(
+    optimizer_vae = tf.train.AdamOptimizer(
         learning_rate=learning_rate).minimize(ae['cost'])
+    optimizer_softmax = tf.train.GradientDescentOptimizer(learning_rate=.001).minimize(ae['cost_s'])
 
     # We create a session to use the graph
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.65)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
     sess.run(tf.initialize_all_variables())
@@ -470,23 +478,38 @@ def train_vae(files_img,
     batch_i = 0
     epoch_i = 0
     cost = 0
-    n_files = len(files_img)
-    test_xs = sess.run(batch_img) / 255.0
-    utils.montage(test_xs, 'test_xs_img.png')
-    test_xs = sess.run(batch_obj) / 255.0
-    utils.montage(test_xs, 'test_xs_obj.png')
-    test_xs_label = sess.run(batch_label_i)
+    if use_csv:
+        with open(files_img,"r") as f:
+            reader = csv.reader(f,delimiter = ",")
+            data = list(reader)
+            n_files = len(data)
+    else:
+        n_files = len(files_img)
+    test_xs, test_xs_label = sess.run([batch_img, batch_label_i])
+    test_xs = test_xs / 255.0
+    utils.montage(test_xs[0:25], 'test_xs_img.png')
+    test_xs, test_xs_label = sess.run([batch_obj, batch_label_o])
+    test_xs = test_xs / 255.0
+    utils.montage(test_xs[0:25], 'test_xs_obj.png')
     try:
         while not coord.should_stop():
             batch_i += 1
-            batch_xs_img = sess.run(batch_img) / 255.0
-            batch_xs_obj = sess.run(batch_obj) / 255.0
-            batch_xs_label = sess.run(batch_label_i)
-            train_cost = sess.run([ae['cost'], optimizer], feed_dict={
+            batch_xs_img, batch_xs_label = sess.run([batch_img, batch_label_i])
+            batch_xs_img = batch_xs_img / 255.0
+            batch_xs_obj, batch_xs_label2 = sess.run([batch_obj, batch_label_o])
+            batch_xs_obj = batch_xs_obj / 255.0
+            #import pdb; pdb.set_trace()
+            assert batch_xs_label.all() == batch_xs_label2.all()
+            train_cost_vae = sess.run([ae['cost'], optimizer_vae], feed_dict={
                 ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
                 ae['x_label']: batch_xs_label, ae['train']: True,
                 ae['keep_prob']: keep_prob})[0]
-            cost += train_cost
+            train_cost_softmax = sess.run([ae['cost_s'], optimizer_softmax], feed_dict={
+                ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
+                ae['x_label']: batch_xs_label, ae['train']: True,
+                ae['keep_prob']: keep_prob})[0]
+            cost += train_cost_vae
+            cost += train_cost_softmax
             if batch_i % n_files == 0:
                 batch_i = 0
                 epoch_i += 1
@@ -504,7 +527,7 @@ def train_vae(files_img,
 
                 # Plot example reconstructions
                 recon = sess.run(
-                    ae['y'], feed_dict={ae['x_img']: test_xs,
+                    ae['y'], feed_dict={ae['x_img']: test_xs[0:25],
                                         ae['train']: False,
                                         ae['keep_prob']: 1.0})
                 utils.montage(recon.reshape([-1] + crop_shape),
@@ -512,7 +535,8 @@ def train_vae(files_img,
                 t_i += 1
 
             if batch_i % save_step == 0:
-                print(train_cost)
+                print("VAE loss = %d, SM loss = %.3f" % (train_cost_vae, train_cost_softmax))
+                # print(train_cost_softmax)
                 # Save the variables to disk.
                 saver.save(sess, "./" + ckpt_name,
                            global_step=batch_i,

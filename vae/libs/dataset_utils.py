@@ -46,7 +46,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     # We also specify it's capacity beforehand.
     if use_csv:
         filename_queue = tf.train.string_input_producer(
-            [files], shuffle=True, seed=seed)
+            [files], shuffle=False, seed=seed)
         reader = tf.TextLineReader()
         _, csv_content = reader.read(filename_queue)
 
@@ -54,9 +54,9 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
         img_path, img_cat_temp = tf.decode_csv(
             csv_content, record_defaults=record_defaults)
         img_cat = tf.pack([img_cat_temp])
-        im_content = tf.read_file(img_path)
+        vals = tf.read_file(img_path)
         imgs = tf.image.decode_jpeg(
-            im_content,
+            vals,
             channels=3 if len(shape) > 2 and shape[2] == 3 else 0)
     else:
         producer = tf.train.string_input_producer(
