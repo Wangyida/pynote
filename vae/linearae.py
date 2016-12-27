@@ -265,7 +265,7 @@ optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
 
 # (TODO) Create a tensorflow session and initialize all of our weights:
 sess = tf.Session()
-sess.run(tf.initialize_all_variables())
+sess.run(tf.global_variables_initializer())
 
 # Some parameters for training
 batch_size = 50

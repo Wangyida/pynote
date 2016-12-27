@@ -35,7 +35,7 @@ class ScanFile(object):
         return subdir_list
 
 if __name__=="__main__":
-    dir=r"/Users/yidawang/Documents/database/annotated_data/annotated_img"
+    dir=r"/Users/yidawang/Documents/database/real_annotated/annotated_pascal"
     scan=ScanFile(dir)
     subdirs=scan.scan_subdir()
     files=scan.scan_files()
@@ -44,11 +44,13 @@ if __name__=="__main__":
     for subdir in subdirs:
         print subdir
 
-    file_object = open('list_annotated_img.csv', 'w')
+    file_object = open('list_annotated_pascal.csv', 'w')
     # shuffle the list
     random.seed(1)
     random.shuffle(files)
 
     for file in files:
-        file_object.write(file + ',' + str(int(file[-13:-11])-1) + '\n')
+        label_start = file.rfind('/')+1
+        label_end = file.find('_', label_start)
+        file_object.write(file + ',' + str(int(file[label_start:label_end])) + '\n')
     print "The files scaned are already written in csv"

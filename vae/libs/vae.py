@@ -27,7 +27,7 @@ def alexnet_v2_arg_scope(weight_decay=0.0005):
         return arg_sc
 
 def alexnet_v2(inputs,
-               num_classes=12,
+               num_classes=13,
                is_training=True,
                dropout_keep_prob=0.5,
                spatial_squeeze=True,
@@ -87,7 +87,7 @@ def alexnet_v2(inputs,
         net = slim.conv2d(net, num_classes, [1, 1],
                           activation_fn=None,
                           normalizer_fn=None,
-                          biases_initializer=tf.zeros_initializer,
+                          biases_initializer=tf.constant_initializer(0),
                           scope='fc8')
 
       # Convert end_points_collection into a end_point dict.
@@ -178,15 +178,16 @@ def VAE(input_shape=[None, 784],
     x_obj = tf.placeholder(tf.float32, input_shape, 'x_obj')
     phase_train = tf.placeholder(tf.bool, name='phase_train')
     keep_prob = tf.placeholder(tf.float32, name='keep_prob')
-    corrupt_prob = tf.placeholder(tf.float32, [1])
+    corrupt_prob = tf.placeholder(tf.float32, name='corrupt_prob')
     x_label = tf.placeholder(tf.int32, [None,1], 'x_label')
 
-    if denoising:
-        current_input = utils.corrupt(x_img) * corrupt_prob + x_img * (1 - corrupt_prob)
-
+    # input of the reconstruction network
+    # np.tanh(2) = 0.964
+    corrupt_prob = 1-tf.tanh(2*(1-corrupt_prob))
+    current_input1 = utils.corrupt(x_img) * (1-corrupt_prob) + x_img * corrupt_prob if denoising else x_img
+    current_input1.set_shape(x_img.get_shape())
     # 2d -> 4d if convolution
-    x_tensor = utils.to_tensor(x_img) if convolutional else x_img
-    current_input = x_tensor
+    current_input1 = utils.to_tensor(current_input1) if convolutional else current_input1
 
     Ws = []
     shapes = []
@@ -194,27 +195,27 @@ def VAE(input_shape=[None, 784],
     # Build the encoder
     for layer_i, n_output in enumerate(n_filters):
         with tf.variable_scope('encoder/{}'.format(layer_i)):
-            shapes.append(current_input.get_shape().as_list())
+            shapes.append(current_input1.get_shape().as_list())
             if convolutional:
-                h, W = utils.conv2d(x=current_input,
+                h, W = utils.conv2d(x=current_input1,
                                     n_output=n_output,
                                     k_h=filter_sizes[layer_i],
                                     k_w=filter_sizes[layer_i])
             else:
-                h, W = utils.linear(x=current_input,
+                h, W = utils.linear(x=current_input1,
                                     n_output=n_output)
             h = activation(batch_norm(h, phase_train, 'bn' + str(layer_i)))
             if dropout:
                 h = tf.nn.dropout(h, keep_prob)
             Ws.append(W)
-            current_input = h
+            current_input1 = h
 
-    shapes.append(current_input.get_shape().as_list())
+    shapes.append(current_input1.get_shape().as_list())
 
     with tf.variable_scope('variational'):
         if variational:
-            dims = current_input.get_shape().as_list()
-            flattened = utils.flatten(current_input)
+            dims = current_input1.get_shape().as_list()
+            flattened = utils.flatten(current_input1)
 
             if n_hidden:
                 h = utils.linear(flattened, n_hidden, name='W_fc')[0]
@@ -233,7 +234,7 @@ def VAE(input_shape=[None, 784],
 
             # Sample from noise distribution p(eps) ~ N(0, 1)
             epsilon = tf.random_normal(
-                tf.pack([tf.shape(x_img)[0], n_code]))
+                tf.stack([tf.shape(x_img)[0], n_code]))
 
             # Sample from posterior
             z = z_mu + tf.mul(epsilon, tf.exp(z_log_sigma))
@@ -248,19 +249,19 @@ def VAE(input_shape=[None, 784],
 
             size = dims[1] * dims[2] * dims[3] if convolutional else dims[1]
             h = utils.linear(h, size, name='fc_t2')[0]
-            current_input = activation(batch_norm(h, phase_train, 'fc_t2/bn'))
+            current_input1 = activation(batch_norm(h, phase_train, 'fc_t2/bn'))
             if dropout:
-                current_input = tf.nn.dropout(current_input, keep_prob)
+                current_input1 = tf.nn.dropout(current_input1, keep_prob)
 
             if convolutional:
-                current_input = tf.reshape(
-                    current_input, tf.pack([
-                        tf.shape(current_input)[0],
+                current_input1 = tf.reshape(
+                    current_input1, tf.stack([
+                        tf.shape(current_input1)[0],
                         dims[1],
                         dims[2],
                         dims[3]]))
         else:
-            z = current_input
+            z = current_input1
 
     shapes.reverse()
     n_filters.reverse()
@@ -274,7 +275,7 @@ def VAE(input_shape=[None, 784],
         with tf.variable_scope('decoder/{}'.format(layer_i)):
             shape = shapes[layer_i + 1]
             if convolutional:
-                h, W = utils.deconv2d(x=current_input,
+                h, W = utils.deconv2d(x=current_input1,
                                       n_output_h=shape[1],
                                       n_output_w=shape[2],
                                       n_output_ch=shape[3],
@@ -282,14 +283,14 @@ def VAE(input_shape=[None, 784],
                                       k_h=filter_sizes[layer_i],
                                       k_w=filter_sizes[layer_i])
             else:
-                h, W = utils.linear(x=current_input,
+                h, W = utils.linear(x=current_input1,
                                     n_output=n_output)
             h = activation(batch_norm(h, phase_train, 'dec/bn' + str(layer_i)))
             if dropout:
                 h = tf.nn.dropout(h, keep_prob)
-            current_input = h
+            current_input1 = h
 
-    y = current_input
+    y = current_input1
     x_obj_flat = utils.flatten(x_obj)
     y_flat = utils.flatten(y)
 
@@ -309,23 +310,34 @@ def VAE(input_shape=[None, 784],
         cost = tf.reduce_mean(loss_x)
 
     # Alexnet for clasification based on softmax using TensorFlow slim
-    # if softmax:
-    # alexnet = tf.contrib.slim.nets.alexnet
-    corrupt_ratio = 1
-    x_img_corrupt = tf.mul(x_img, tf.cast(tf.random_uniform(shape=tf.shape(x_img),
-                                               minval=0,
-                                               maxval=2,
-                                               dtype=tf.int32), tf.float32))
-    x_img_corrupt = x_img_corrupt * corrupt_ratio + x_img * (1 - corrupt_ratio)
-    y_concat = tf.concat(3, (tf.image.resize_images(x_img_corrupt, [224, 224]),
-        tf.image.resize_images(y, [224, 224])))
-    with slim.arg_scope(alexnet_v2_arg_scope()):
-        predictions, end_points = alexnet_v2(y_concat)
-    x_label_onehot = tf.squeeze(tf.one_hot(x_label, 12, 1, 0), [1])
-    slim.losses.softmax_cross_entropy(predictions, x_label_onehot)
-    cost_s = slim.losses.get_total_loss()
-    # cost = tf.reduce_mean(cost + cost_s)
-    acc = tf.nn.in_top_k(predictions, tf.squeeze(x_label, [1]), 1)
+    if softmax:
+        mean1, variance1 = tf.nn.moments(x_obj, [3 if convolutional else 2])
+        mean2, variance2 = tf.nn.moments(y, [3 if convolutional else 2])
+        # np.tanh(2) = 0.964
+        balance_prob = tf.tanh(2*variance2/variance1)
+
+        # input of the classification network
+        current_y = tf.image.resize_images(y, [224, 224])
+        current_y = batch_norm(current_y, phase_train, 'rec/bn')
+        current_input2 = utils.corrupt(x_img)*corrupt_prob*(1-balance_prob) + x_img*(1-corrupt_prob)*balance_prob if denoising else x_img
+        current_input2.set_shape(x_img.get_shape())
+        current_input2 = tf.image.resize_images(current_input2, [224, 224])
+        current_input2 = utils.to_tensor(current_input2) if convolutional else current_input2
+        current_input2 = batch_norm(current_input2, phase_train, 'inrecon/bn')
+
+        y_concat = tf.concat_v2([current_input2, current_y], 3)
+        with slim.arg_scope(alexnet_v2_arg_scope()):
+            predictions, end_points = alexnet_v2(y_concat)
+        x_label_onehot = tf.squeeze(tf.one_hot(x_label, 13, 1, 0), [1])
+        slim.losses.softmax_cross_entropy(predictions, x_label_onehot)
+        cost_s = slim.losses.get_total_loss()
+        # cost = tf.reduce_mean(cost + cost_s)
+        acc = tf.nn.in_top_k(predictions, tf.squeeze(x_label, [1]), 1)
+    else:
+        predictions = tf.squeeze(tf.one_hot(x_label, 13, 1, 0), [1])
+        x_label_onehot = tf.squeeze(tf.one_hot(x_label, 13, 1, 0), [1])
+        cost_s = 0
+        acc = 0
 
     return {'cost': cost, 'cost_s': cost_s, 'Ws': Ws,
             'x_img': x_img, 'x_obj': x_obj, 'x_label': x_label,
@@ -343,16 +355,19 @@ def train_vae(files_img,
               learning_rate=0.0001,
               batch_size=100,
               n_epochs=50,
-              n_examples=10,
-              crop_shape=[64, 64, 3],
+              n_examples=121,
+              crop_shape=[128, 128, 3],
               crop_factor=0.8,
-              n_filters=[100, 100, 100, 100],
+              n_filters=[75, 100, 100, 100, 100],
               n_hidden=256,
               n_code=50,
+              denoising=True,
               convolutional=True,
               variational=True,
+              softmax=False,
               filter_sizes=[3, 3, 3, 3],
               dropout=True,
+              corrupt_prob=0.1,
               keep_prob=0.8,
               activation=tf.nn.relu,
               img_step=100,
@@ -432,8 +447,10 @@ def train_vae(files_img,
 
 
     ae = VAE(input_shape=[None] + crop_shape,
+             denoising=denoising,
              convolutional=convolutional,
              variational=variational,
+             softmax=softmax,
              n_filters=n_filters,
              n_hidden=n_hidden,
              n_code=n_code,
@@ -447,19 +464,21 @@ def train_vae(files_img,
     # is capable of encoding, though note that this is just
     # a random hyperplane within the latent space, and does not
     # encompass all possible embeddings.
+    np.random.seed(1)
     zs = np.random.uniform(
         -1.0, 1.0, [4, n_code]).astype(np.float32)
     zs = utils.make_latent_manifold(zs, n_examples)
 
     optimizer_vae = tf.train.AdamOptimizer(
         learning_rate=learning_rate).minimize(ae['cost'])
-    optimizer_softmax = tf.train.GradientDescentOptimizer(learning_rate=.001).minimize(ae['cost_s'])
+    if softmax:
+        optimizer_softmax = tf.train.GradientDescentOptimizer(learning_rate=.01).minimize(ae['cost_s'])
 
     # We create a session to use the graph
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.55)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
 
     # This will handle our threaded image pipeline
     coord = tf.train.Coordinator()
@@ -485,12 +504,12 @@ def train_vae(files_img,
             n_files = len(data)
     else:
         n_files = len(files_img)
-    test_xs, test_xs_label = sess.run([batch_img, batch_label_i])
-    test_xs = test_xs / 255.0
-    utils.montage(test_xs[0:25], 'test_xs_img.png')
-    test_xs, test_xs_label = sess.run([batch_obj, batch_label_o])
-    test_xs = test_xs / 255.0
-    utils.montage(test_xs[0:25], 'test_xs_obj.png')
+    test_xs_obj, test_xs_label = sess.run([batch_obj, batch_label_o])
+    test_xs_obj = test_xs_obj / 255.0
+    utils.montage(test_xs_obj, 'test_xs_obj.png')
+    test_xs_img, test_xs_label = sess.run([batch_img, batch_label_i])
+    test_xs_img = test_xs_img / 255.0
+    utils.montage(test_xs_img, 'test_xs_img.png')
     try:
         while not coord.should_stop():
             batch_i += 1
@@ -503,13 +522,14 @@ def train_vae(files_img,
             train_cost_vae = sess.run([ae['cost'], optimizer_vae], feed_dict={
                 ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
                 ae['x_label']: batch_xs_label, ae['train']: True,
-                ae['keep_prob']: keep_prob})[0]
-            train_cost_softmax = sess.run([ae['cost_s'], optimizer_softmax], feed_dict={
-                ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
-                ae['x_label']: batch_xs_label, ae['train']: True,
-                ae['keep_prob']: keep_prob})[0]
+                ae['keep_prob']: keep_prob, ae['corrupt_prob']: corrupt_prob})[0]
             cost += train_cost_vae
-            cost += train_cost_softmax
+            if softmax:
+                train_cost_softmax = sess.run([ae['cost_s'], optimizer_softmax], feed_dict={
+                    ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
+                    ae['x_label']: batch_xs_label, ae['train']: True,
+                    ae['keep_prob']: keep_prob, ae['corrupt_prob']: corrupt_prob})[0]
+                cost += train_cost_softmax
             if batch_i % n_files == 0:
                 batch_i = 0
                 epoch_i += 1
@@ -521,32 +541,76 @@ def train_vae(files_img,
                         ae['y'], feed_dict={
                             ae['z']: zs,
                             ae['train']: False,
-                            ae['keep_prob']: 1.0})
+                            ae['keep_prob']: 1.0,
+                            ae['corrupt_prob']: 0})
                     utils.montage(recon.reshape([-1] + crop_shape),
                                   'manifold_%08d.png' % t_i)
 
                 # Plot example reconstructions
                 recon = sess.run(
-                    ae['y'], feed_dict={ae['x_img']: test_xs[0:25],
+                    ae['y'], feed_dict={ae['x_img']: test_xs_img,
                                         ae['train']: False,
-                                        ae['keep_prob']: 1.0})
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_prob']: 0})
                 utils.montage(recon.reshape([-1] + crop_shape),
                               'reconstruction_%08d.png' % t_i)
+                """
+                filters = sess.run(
+                  ae['Ws'], feed_dict={ae['x_img']: test_xs_img,
+                                      ae['train']: False,
+                                      ae['keep_prob']: 1.0,
+                                      ae['corrupt_prob']: 0})
+                #for filter_element in filters:
+                utils.montage_filters(filters[-1],
+                            'filter_%08d.png' % t_i)
+                """
                 t_i += 1
 
             if batch_i % save_step == 0:
-                print("VAE loss = %d, SM loss = %.3f" % (train_cost_vae, train_cost_softmax))
                 # print(train_cost_softmax)
                 # Save the variables to disk.
                 saver.save(sess, "./" + ckpt_name,
                            global_step=batch_i,
                            write_meta_graph=False)
-                acc = sess.run(
-                    ae['acc'], feed_dict={ae['x_img']: test_xs,
-                                        ae['x_label']: test_xs_label,
-                                        ae['train']: False,
-                                        ae['keep_prob']: 1.0})
-                print("Accuracy = %.3f" % (acc.tolist().count(True)/acc.size))
+                if softmax:
+                    acc = sess.run(
+                        ae['acc'], feed_dict={ae['x_img']: test_xs_img,
+                                            ae['x_label']: test_xs_label,
+                                            ae['train']: False,
+                                            ae['keep_prob']: 1.0,
+                                            ae['corrupt_prob']: 0})
+                    print("VAE loss = %d, SM loss = %.3f, Accuracy = %.3f" %
+                        (train_cost_vae, train_cost_softmax, acc.tolist().count(True)/acc.size))
+                else:
+                    print("VAE loss = %d" % train_cost_vae)
+
+            if batch_i % (save_step*20) == 0:
+                with open('/Users/yidawang/Documents/pynote/list_annotated_imagenet.csv', 'rb') as csvfile:
+                    rows = list(spamreader)
+                    totalrows = len(rows)
+                num_batches = floor(totalrows/batch_size)
+                accumulated_acc = 0
+                for index_batch in range(1, num_batches+1):
+                    batch_real, batch_real_label = create_input_pipeline(
+                        files="/Users/yidawang/Documents/pynote/list_annotated_imagenet.csv",
+                        batch_size=batch_size,
+                        n_epochs=n_epochs,
+                        crop_shape=crop_shape,
+                        crop_factor=crop_factor,
+                        shape=input_shape,
+                        seed=seed,
+                        use_csv=use_csv)
+                    test_real, test_real_label = sess.run([batch_real, batch_real_label])
+                    test_real = test_real / 255.0
+                    acc = sess.run(
+                        ae['acc'], feed_dict={ae['x_img']: test_real,
+                                            ae['x_label']: test_real_label,
+                                            ae['train']: False,
+                                            ae['keep_prob']: 1.0,
+                                            ae['corrupt_prob']: 0})
+                    accumulated_acc = accumulated_acc + acc.tolist().count(True)/acc.size
+                accumulated_acc = accumulated_acc/num_batches
+                print("Accuracy of real images= %.3f" % (accumulated_acc))
     except tf.errors.OutOfRangeError:
         print('Done.')
     finally:

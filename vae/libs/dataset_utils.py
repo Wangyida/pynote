@@ -53,7 +53,7 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
         record_defaults = [[""], [1]]
         img_path, img_cat_temp = tf.decode_csv(
             csv_content, record_defaults=record_defaults)
-        img_cat = tf.pack([img_cat_temp])
+        img_cat = tf.stack([img_cat_temp])
         vals = tf.read_file(img_path)
         imgs = tf.image.decode_jpeg(
             vals,

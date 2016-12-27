@@ -105,7 +105,7 @@ else:
     files_obj=scan2.scan_files()
     assert len(files_obj) == len(files_img)
     print('Files assertion passed, ', len(files_img), 'training files in total')
-input_shape = [100, 100, 3]
+input_shape = [130, 130, 3]
 # files_img = [os.path.join(image_dir, file_i) for file_i in os.listdir(image_dir) if file_i.endswith('.jpg')]
 # files_obj = [os.path.join(object_dir, file_i) for file_i in os.listdir(object_dir) if file_i.endswith('.jpg')]
 
@@ -116,18 +116,21 @@ vae.train_vae(files_img,
               input_shape,
               use_csv=use_csv,
               learning_rate=0.0001,
-              batch_size=64,
+              batch_size=36,
               n_epochs=50,
               n_examples=10,
-              crop_shape=[95, 95, 3],
+              crop_shape=[128, 128, 3],
               crop_factor=1,
-              n_filters=[100, 100, 100, 100],
+              n_filters=[75, 100, 100, 100, 100],
               n_hidden=256,
-              n_code=50,
+              n_code=36,
+              denoising=False,
               convolutional=True,
               variational=True,
-              filter_sizes=[3, 3, 3, 3],
+              softmax=True,
+              filter_sizes=[3, 3, 3, 3, 3],
               dropout=True,
+              corrupt_prob=0.5,
               keep_prob=0.8,
               activation=tf.nn.relu,
               img_step=100,
