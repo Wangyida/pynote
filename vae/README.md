@@ -13,22 +13,27 @@ This is the basic pipeline for AD-CGM
 ### Target
 
 There are two set of rendered images from 3D models, here we use *VTK* for rendering.
+
 ![](https://github.com/wangyida/pynote/blob/master/vae/images/target.jpg)
 
 ### Results on ShapeNet
 
 Those images are input of rendered images from ShapeNet and the reconstruction result of synthetic images.
+
 ![Reconstruction](https://github.com/wangyida/pynote/blob/master/vae/images/shapenet_recon.jpg)
 
 final distribution of AD-CGM from classification sub-network visualized using PCA
+
 ![ShapeNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_shapenet.jpg)
 
 ### Results on ImageNet
 
 The reconstruction result of real images from ImageNet.
+
 ![Reconstruction](https://github.com/wangyida/pynote/blob/master/vae/images/imagenet_recon.jpg)
 
 final distribution of AD-CGM from classification sub-network visualized using PCA.
+
 ![ImageNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_imagenet.jpg)
 
 
