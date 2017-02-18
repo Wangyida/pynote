@@ -7,6 +7,7 @@ Copyright reserved for Yida Wang from BUPT.
 ### Method Pipeline
 
 This is the basic pipeline for AD-CGM
+
 ![Pipeline](https://github.com/wangyida/pynote/blob/master/vae/images/pipeline_tip.jpg)
 
 ### Target
@@ -27,7 +28,8 @@ final distribution of AD-CGM from classification sub-network visualized using PC
 The reconstruction result of real images from ImageNet.
 ![Reconstruction](https://github.com/wangyida/pynote/blob/master/vae/images/imagenet_recon.jpg)
 
-final distribution of AD-CGM from classification sub-network visualized using PCA ![ImageNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_imagenet.jpg)
+final distribution of AD-CGM from classification sub-network visualized using PCA.
+![ImageNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_imagenet.jpg)
 
 
 ## Author info
