@@ -7,24 +7,24 @@ Copyright reserved for Yida Wang from BUPT.
 ### Method Pipeline
 
 This is the basic pipeline for AD-CGM
-![Pipeline](https://github.com/wangyida/pynote/tree/master/vae/images/pipeline_tip.eps)
+![Pipeline](https://github.com/wangyida/pynote/blob/master/vae/images/pipeline_tip.eps)
 
 ### Target
 
 There are two set of rendered images from 3D models, here we use *VTK* for rendering.
-![](https://github.com/wangyida/pynote/tree/master/vae/images/target.jpg)
+![](https://github.com/wangyida/pynote/blob/master/vae/images/target.jpg)
 
 ### Results on ShapeNet
 
-![Input](https://github.com/wangyida/pynote/tree/master/vae/images/test_shapenet_img.jpg) ![Output](https://github.com/wangyida/pynote/tree/master/vae/images/ADCGM_shapenet_test.jpg)
+![Input](https://github.com/wangyida/pynote/blob/master/vae/images/test_shapenet_img.jpg) ![Output](https://github.com/wangyida/pynote/blob/master/vae/images/ADCGM_shapenet_test.jpg)
 
 ### Results on ImageNet
 
-![Input](https://github.com/wangyida/pynote/tree/master/vae/images/test_imagenet_img.jpg) ![Output](https://github.com/wangyida/pynote/tree/master/vae/images/ADCGM_imagenet_test.jpg)
+![Input](https://github.com/wangyida/pynote/blob/master/vae/images/test_imagenet_img.jpg) ![Output](https://github.com/wangyida/pynote/blob/master/vae/images/ADCGM_imagenet_test.jpg)
 
 ### Data Distribution
 
-![ShapeNet](https://github.com/wangyida/pynote/tree/master/vae/images/lowdim_ADCGM_shapenet.jpg) ![ImageNet](https://github.com/wangyida/pynote/tree/master/vae/images/lowdim_ADCGM_shapenet.jpg)
+![ShapeNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_shapenet.jpg) ![ImageNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_shapenet.jpg)
 
 
 ## Author info
