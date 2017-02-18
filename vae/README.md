@@ -7,7 +7,7 @@ Copyright reserved for Yida Wang from BUPT.
 ### Method Pipeline
 
 This is the basic pipeline for AD-CGM
-![Pipeline](https://github.com/wangyida/pynote/blob/master/vae/images/pipeline_tip.eps)
+![Pipeline](https://github.com/wangyida/pynote/blob/master/vae/images/pipeline_tip.jpg)
 
 ### Target
 
@@ -16,14 +16,17 @@ There are two set of rendered images from 3D models, here we use *VTK* for rende
 
 ### Results on ShapeNet
 
+Those images are input of rendered images from ShapeNet and the reconstruction result of synthetic images.
 ![Input](https://github.com/wangyida/pynote/blob/master/vae/images/test_shapenet_img.jpg) ![Output](https://github.com/wangyida/pynote/blob/master/vae/images/ADCGM_shapenet_test.jpg)
 
 ### Results on ImageNet
 
+The reconstruction result of real images from ImageNet.
 ![Input](https://github.com/wangyida/pynote/blob/master/vae/images/test_imagenet_img.jpg) ![Output](https://github.com/wangyida/pynote/blob/master/vae/images/ADCGM_imagenet_test.jpg)
 
 ### Data Distribution
 
+This is the final distribution of AD-CGM from classification sub-network visualized using PCA
 ![ShapeNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_shapenet.jpg) ![ImageNet](https://github.com/wangyida/pynote/blob/master/vae/images/lowdim_ADCGM_shapenet.jpg)
 
 
