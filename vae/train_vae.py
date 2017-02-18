@@ -48,6 +48,7 @@ except ImportError:
 # we will use to display the gif
 from libs import utils, gif, datasets, dataset_utils, vae, dft
 
+# Scan files
 class ScanFile(object):
     def __init__(self,directory,prefix=None,postfix='.jpg'):
         self.directory=directory
@@ -83,8 +84,8 @@ class ScanFile(object):
 
 use_csv=True
 if use_csv:
-    files_img = "/Users/yidawang/Documents/pynote/list_annotated_img.csv"
-    files_obj = "/Users/yidawang/Documents/pynote/list_annotated_obj.csv"
+    files_img = "../list_annotated_img.csv"
+    files_obj = "../list_annotated_obj.csv"
     with open(files_img,"r") as f:
         reader = csv.reader(f,delimiter = ",")
         data = list(reader)
@@ -105,11 +106,12 @@ else:
     files_obj=scan2.scan_files()
     assert len(files_obj) == len(files_img)
     print('Files assertion passed, ', len(files_img), 'training files in total')
-input_shape = [130, 130, 3]
+input_shape = [116, 116, 3]
 # files_img = [os.path.join(image_dir, file_i) for file_i in os.listdir(image_dir) if file_i.endswith('.jpg')]
 # files_obj = [os.path.join(object_dir, file_i) for file_i in os.listdir(object_dir) if file_i.endswith('.jpg')]
 
 # Train it!  Change these parameters!
+# n_code=72, here 72 = 12 * (8-2)
 tf.reset_default_graph()
 vae.train_vae(files_img,
               files_obj,
@@ -119,20 +121,20 @@ vae.train_vae(files_img,
               batch_size=36,
               n_epochs=50,
               n_examples=10,
-              crop_shape=[128, 128, 3],
+              crop_shape=[112, 112, 3],
               crop_factor=1,
-              n_filters=[75, 100, 100, 100, 100],
+              n_filters=[100, 100, 100, 100, 100],
               n_hidden=256,
-              n_code=36,
+              n_code=72,
               denoising=False,
               convolutional=True,
               variational=True,
               softmax=True,
+              classifier='squeezenet',
               filter_sizes=[3, 3, 3, 3, 3],
               dropout=True,
-              corrupt_prob=0.5,
               keep_prob=0.8,
               activation=tf.nn.relu,
-              img_step=100,
-              save_step=100,
+              img_step=2500,
+              save_step=500,
               ckpt_name="./vae.ckpt")

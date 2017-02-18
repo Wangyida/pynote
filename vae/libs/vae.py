@@ -1,101 +1,31 @@
-"""Convolutional/Variational autoencoder, including demonstration of
-training such a network on MNIST, CelebNet and the film, "Sita Sings The Blues"
-using an image pipeline.
-
-Copyright Parag K. Mital, January 2016
 """
+TensorFlow implementation for Adaptive noise assisted Conjugating Generative
+Model based on Conditional Variational Autoencoder, this project is
+implemented based on VAE code pool of Parag K. Mital from Kadenze course
+on Tensorflow and modified by Yida Wang for the paper of
+'Conjugating Generative Model for Object Recognition Based on 3D Models'.
+
+There is also implementation of ZigzagNet and SqueezeNet for compact deep
+learninig for classifcation.
+
+Copyright reserved for Yida Wang from BUPT.
+"""
+
+import os
 import tensorflow as tf
 import numpy as np
 import sys
 import csv
-import os
 from libs.dataset_utils import create_input_pipeline
 from libs.datasets import CELEB, MNIST
 from libs.batch_norm import batch_norm
 from libs import utils
+from network import squeezenet
 
 slim = tf.contrib.slim
-trunc_normal = lambda stddev: tf.truncated_normal_initializer(0.0, stddev)
-
-def alexnet_v2_arg_scope(weight_decay=0.0005):
-  with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                      activation_fn=tf.nn.relu,
-                      biases_initializer=tf.constant_initializer(0.1),
-                      weights_regularizer=slim.l2_regularizer(weight_decay)):
-    with slim.arg_scope([slim.conv2d], padding='SAME'):
-      with slim.arg_scope([slim.max_pool2d], padding='VALID') as arg_sc:
-        return arg_sc
-
-def alexnet_v2(inputs,
-               num_classes=13,
-               is_training=True,
-               dropout_keep_prob=0.5,
-               spatial_squeeze=True,
-               scope='alexnet_v2'):
-  """AlexNet version 2.
-
-  Described in: http://arxiv.org/pdf/1404.5997v2.pdf
-  Parameters from:
-  github.com/akrizhevsky/cuda-convnet2/blob/master/layers/
-  layers-imagenet-1gpu.cfg
-
-  Note: All the fully_connected layers have been transformed to conv2d layers.
-        To use in classification mode, resize input to 224x224. To use in fully
-        convolutional mode, set spatial_squeeze to false.
-        The LRN layers have been removed and change the initializers from
-        random_normal_initializer to xavier_initializer.
-
-  Args:
-    inputs: a tensor of size [batch_size, height, width, channels].
-    num_classes: number of predicted classes.
-    is_training: whether or not the model is being trained.
-    dropout_keep_prob: the probability that activations are kept in the dropout
-      layers during training.
-    spatial_squeeze: whether or not should squeeze the spatial dimensions of the
-      outputs. Useful to remove unnecessary dimensions for classification.
-    scope: Optional scope for the variables.
-
-  Returns:
-    the last op containing the log predictions and end_points dict.
-  """
-  with tf.variable_scope(scope, 'alexnet_v2', [inputs]) as sc:
-    end_points_collection = sc.original_name_scope + '_end_points'
-    # Collect outputs for conv2d, fully_connected and max_pool2d.
-    with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
-                        outputs_collections=[end_points_collection]):
-      net = slim.conv2d(inputs, 64, [11, 11], 4, padding='VALID',
-                        scope='conv1')
-      net = slim.max_pool2d(net, [3, 3], 2, scope='pool1')
-      net = slim.conv2d(net, 192, [5, 5], scope='conv2')
-      net = slim.max_pool2d(net, [3, 3], 2, scope='pool2')
-      net = slim.conv2d(net, 384, [3, 3], scope='conv3')
-      net = slim.conv2d(net, 384, [3, 3], scope='conv4')
-      net = slim.conv2d(net, 256, [3, 3], scope='conv5')
-      net = slim.max_pool2d(net, [3, 3], 2, scope='pool5')
-
-      # Use conv2d instead of fully_connected layers.
-      with slim.arg_scope([slim.conv2d],
-                          weights_initializer=trunc_normal(0.005),
-                          biases_initializer=tf.constant_initializer(0.1)):
-        net = slim.conv2d(net, 4096, [5, 5], padding='VALID',
-                          scope='fc6')
-        net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout6')
-        net = slim.conv2d(net, 4096, [1, 1], scope='fc7')
-        net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                           scope='dropout7')
-        net = slim.conv2d(net, num_classes, [1, 1],
-                          activation_fn=None,
-                          normalizer_fn=None,
-                          biases_initializer=tf.constant_initializer(0),
-                          scope='fc8')
-
-      # Convert end_points_collection into a end_point dict.
-      end_points = slim.utils.convert_collection_to_dict(end_points_collection)
-      if spatial_squeeze:
-        net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
-        end_points[sc.name + '/fc8'] = net
-      return net, end_points
+from tensorflow.contrib.slim.python.slim.nets import alexnet
+from tensorflow.contrib.slim.python.slim.nets import inception
+from tensorflow.contrib.slim.python.slim.nets import vgg
 
 def VAE(input_shape=[None, 784],
         n_filters=[64, 64, 64],
@@ -107,7 +37,8 @@ def VAE(input_shape=[None, 784],
         denoising=False,
         convolutional=False,
         variational=False,
-        softmax=False):
+        softmax=False,
+        classifier='alexnet_v2'):
     """(Variational) (Convolutional) (Denoising) Autoencoder.
 
     Uses tied weights.
@@ -144,7 +75,7 @@ def VAE(input_shape=[None, 784],
         values are between 0.5-0.8.
     denoising : bool, optional
         Whether or not to apply denoising.  If using denoising, you must feed a
-        value for 'corrupt_prob', as returned in the dictionary.  1.0 means no
+        value for 'corrupt_rec', as returned in the dictionary.  1.0 means no
         corruption is used.  0.0 means every feature is corrupted.  Sensible
         values are between 0.5-0.8.
     convolutional : bool, optional
@@ -169,7 +100,7 @@ def VAE(input_shape=[None, 784],
             'z': Inner most encoding Tensor (latent features)
             'y': Reconstruction of the Decoder
             'keep_prob': Amount to keep when using Dropout
-            'corrupt_prob': Amount to corrupt when using Denoising
+            'corrupt_rec': Amount to corrupt when using Denoising
             'train': Set to True when training/Applies to Batch Normalization.
         }
     """
@@ -178,16 +109,18 @@ def VAE(input_shape=[None, 784],
     x_obj = tf.placeholder(tf.float32, input_shape, 'x_obj')
     phase_train = tf.placeholder(tf.bool, name='phase_train')
     keep_prob = tf.placeholder(tf.float32, name='keep_prob')
-    corrupt_prob = tf.placeholder(tf.float32, name='corrupt_prob')
+    corrupt_rec = tf.placeholder(tf.float32, name='corrupt_rec')
+    corrupt_cls = tf.placeholder(tf.float32, name='corrupt_cls')
     x_label = tf.placeholder(tf.int32, [None,1], 'x_label')
 
     # input of the reconstruction network
     # np.tanh(2) = 0.964
-    corrupt_prob = 1-tf.tanh(2*(1-corrupt_prob))
-    current_input1 = utils.corrupt(x_img) * (1-corrupt_prob) + x_img * corrupt_prob if denoising else x_img
+    current_input1 = utils.corrupt(x_img)*corrupt_rec + x_img*(1-corrupt_rec) \
+                if (denoising and phase_train is not None) else x_img
     current_input1.set_shape(x_img.get_shape())
     # 2d -> 4d if convolution
-    current_input1 = utils.to_tensor(current_input1) if convolutional else current_input1
+    current_input1 = utils.to_tensor(current_input1) \
+                if convolutional else current_input1
 
     Ws = []
     shapes = []
@@ -295,39 +228,74 @@ def VAE(input_shape=[None, 784],
     y_flat = utils.flatten(y)
 
     # l2 loss
-    loss_x = tf.reduce_sum(tf.squared_difference(x_obj_flat, y_flat), 1)
+    loss_x = tf.reduce_mean(
+        tf.reduce_sum(tf.squared_difference(x_obj_flat, y_flat), 1))
+    loss_z = 0
 
     if variational:
-        # variational lower bound, kl-divergence
-        loss_z = -0.5 * tf.reduce_sum(
+        # Variational lower bound, kl-divergence
+        loss_z = tf.reduce_mean(-0.5 * tf.reduce_sum(
             1.0 + 2.0 * z_log_sigma -
-            tf.square(z_mu) - tf.exp(2.0 * z_log_sigma), 1)
+            tf.square(z_mu) - tf.exp(2.0 * z_log_sigma), 1))
 
-        # add l2 loss
-        cost = tf.reduce_mean(loss_x + loss_z)
+        # Add l2 loss
+        cost_vae = tf.reduce_mean(loss_x + loss_z)
     else:
-        # just optimize l2 loss
-        cost = tf.reduce_mean(loss_x)
+        # Just optimize l2 loss
+        cost_vae = tf.reduce_mean(loss_x)
 
     # Alexnet for clasification based on softmax using TensorFlow slim
     if softmax:
-        mean1, variance1 = tf.nn.moments(x_obj, [3 if convolutional else 2])
-        mean2, variance2 = tf.nn.moments(y, [3 if convolutional else 2])
-        # np.tanh(2) = 0.964
-        balance_prob = tf.tanh(2*variance2/variance1)
+        axis = list(range(len(x_img.get_shape())))
+        mean1, variance1 = tf.nn.moments(x_obj, axis) \
+                        if (phase_train is True) else tf.nn.moments(x_img, axis)
+        mean2, variance2 = tf.nn.moments(y, axis)
+        var_prob = variance2/variance1
 
-        # input of the classification network
-        current_y = tf.image.resize_images(y, [224, 224])
-        current_y = batch_norm(current_y, phase_train, 'rec/bn')
-        current_input2 = utils.corrupt(x_img)*corrupt_prob*(1-balance_prob) + x_img*(1-corrupt_prob)*balance_prob if denoising else x_img
+        # Input of the classification network
+        current_input2 = utils.corrupt(x_img)*corrupt_cls + \
+                     x_img*(1-corrupt_cls) \
+                     if (denoising and phase_train is True) else x_img
         current_input2.set_shape(x_img.get_shape())
-        current_input2 = tf.image.resize_images(current_input2, [224, 224])
-        current_input2 = utils.to_tensor(current_input2) if convolutional else current_input2
-        current_input2 = batch_norm(current_input2, phase_train, 'inrecon/bn')
+        current_input2 = utils.to_tensor(current_input2) \
+                    if convolutional else current_input2
 
-        y_concat = tf.concat_v2([current_input2, current_y], 3)
-        with slim.arg_scope(alexnet_v2_arg_scope()):
-            predictions, end_points = alexnet_v2(y_concat)
+        y_concat = tf.concat_v2([current_input2, y], 3)
+        with tf.variable_scope('deconv/concat'):
+            shape = shapes[layer_i + 1]
+            if convolutional:
+        # Here we set the input of classification network is the twice of
+        # the input of the reconstruction network
+        # 112->224 for alexNet and 150->300 for inception v3 and v4
+                y_concat, W = utils.deconv2d(x=y_concat,
+                                          n_output_h=y_concat.get_shape()[1]*2,
+                                          n_output_w=y_concat.get_shape()[1]*2,
+                                          n_output_ch=y_concat.get_shape()[3],
+                                          n_input_ch=y_concat.get_shape()[3],
+                                          k_h=3,
+                                          k_w=3)
+                Ws.append(W)
+
+        # SqueezeNet
+        if classifier == 'squeezenet':
+            predictions, net = squeezenet.squeezenet(
+                        y_concat, num_classes=13)
+        if classifier == 'zigzagnet':
+            predictions, net = squeezenet.zigzagnet(
+                        y_concat, num_classes=13)
+        elif classifier == 'alexnet_v2':
+            predictions, end_points = alexnet.alexnet_v2(
+                        y_concat, num_classes=13)
+        elif classifier == 'inception_v1':
+            predictions, end_points = inception.inception_v1(
+                        y_concat, num_classes=13)
+        elif classifier == 'inception_v2':
+            predictions, end_points = inception.inception_v2(
+                        y_concat, num_classes=13)
+        elif classifier == 'inception_v3':
+            predictions, end_points = inception.inception_v3(
+                        y_concat, num_classes=13)
+
         x_label_onehot = tf.squeeze(tf.one_hot(x_label, 13, 1, 0), [1])
         slim.losses.softmax_cross_entropy(predictions, x_label_onehot)
         cost_s = slim.losses.get_total_loss()
@@ -338,14 +306,28 @@ def VAE(input_shape=[None, 784],
         x_label_onehot = tf.squeeze(tf.one_hot(x_label, 13, 1, 0), [1])
         cost_s = 0
         acc = 0
+    # Using Summaries for Tensorboard
+    tf.summary.scalar('cost_vae', cost_vae)
+    tf.summary.scalar('cost_s', cost_s)
+    tf.summary.scalar('loss_x', loss_x)
+    tf.summary.scalar('loss_z', loss_z)
+    tf.summary.scalar('corrupt_rec', corrupt_rec)
+    tf.summary.scalar('corrupt_cls', corrupt_cls)
+    tf.summary.scalar('var_prob', var_prob)
+    merged = tf.summary.merge_all()
 
-    return {'cost': cost, 'cost_s': cost_s, 'Ws': Ws,
+    return {'cost_vae': cost_vae, 'cost_s': cost_s,
+            'loss_x': loss_x, 'loss_z': loss_z,
+            'Ws': Ws,
             'x_img': x_img, 'x_obj': x_obj, 'x_label': x_label,
             'x_label_onehot': x_label_onehot, 'predictions': predictions,
             'z': z, 'y': y, 'acc': acc,
             'keep_prob': keep_prob,
-            'corrupt_prob': corrupt_prob,
-            'train': phase_train}
+            'corrupt_rec': corrupt_rec,
+            'corrupt_cls': corrupt_cls,
+            'var_prob': var_prob,
+            'train': phase_train,
+            'merged': merged}
 
 
 def train_vae(files_img,
@@ -365,12 +347,12 @@ def train_vae(files_img,
               convolutional=True,
               variational=True,
               softmax=False,
+              classifier='alexnet_v2',
               filter_sizes=[3, 3, 3, 3],
               dropout=True,
-              corrupt_prob=0.1,
               keep_prob=0.8,
               activation=tf.nn.relu,
-              img_step=100,
+              img_step=2500,
               save_step=100,
               ckpt_name="./vae.ckpt"):
     """General purpose training of a (Variational) (Convolutional) Autoencoder.
@@ -445,6 +427,35 @@ def train_vae(files_img,
         seed=seed,
         use_csv=use_csv)
 
+    if softmax:
+        batch_imagenet, batch_imagenet_label = create_input_pipeline(
+            files="../list_annotated_imagenet.csv",
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            crop_shape=crop_shape,
+            crop_factor=crop_factor,
+            shape=input_shape,
+            seed=seed,
+            use_csv=use_csv)
+        batch_pascal, batch_pascal_label = create_input_pipeline(
+            files="../list_annotated_pascal.csv",
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            crop_shape=crop_shape,
+            crop_factor=crop_factor,
+            shape=input_shape,
+            seed=seed,
+            use_csv=use_csv)
+        batch_shapenet, batch_shapenet_label = create_input_pipeline(
+            files="../list_annotated_img_test.csv",
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            crop_shape=crop_shape,
+            crop_factor=crop_factor,
+            shape=input_shape,
+            seed=seed,
+            use_csv=use_csv)
+
 
     ae = VAE(input_shape=[None] + crop_shape,
              denoising=denoising,
@@ -456,7 +467,16 @@ def train_vae(files_img,
              n_code=n_code,
              dropout=dropout,
              filter_sizes=filter_sizes,
-             activation=activation)
+             activation=activation,
+             classifier=classifier)
+
+    if use_csv:
+        with open(files_img,"r") as f:
+            reader = csv.reader(f,delimiter = ",")
+            data = list(reader)
+            n_files = len(data)
+    else:
+        n_files = len(files_img)
 
     # Create a manifold of our inner most layer to show
     # example reconstructions.  This is one way to see
@@ -470,14 +490,48 @@ def train_vae(files_img,
     zs = utils.make_latent_manifold(zs, n_examples)
 
     optimizer_vae = tf.train.AdamOptimizer(
-        learning_rate=learning_rate).minimize(ae['cost'])
+        learning_rate=learning_rate).minimize(ae['cost_vae'])
     if softmax:
-        optimizer_softmax = tf.train.GradientDescentOptimizer(learning_rate=.01).minimize(ae['cost_s'])
+        # AlexNet for 0.01,
+        # Iception v1 for 0.01
+        # SqueezeNet for 0.01
+        if classifier == 'inception_v3':
+            lr = tf.train.exponential_decay(
+                                    0.1,
+                                    0,
+                                    n_files/batch_size*20,
+                                    0.16,
+                                    staircase=True)
+            optimizer_softmax = tf.train.RMSPropOptimizer(
+                                    lr,
+                                    decay=0.9,
+                                    momentum=0.9,
+                                    epsilon=0.1).minimize(ae['cost_s'])
+        elif classifier == 'inception_v2':
+            optimizer_softmax = tf.train.AdamOptimizer(
+                                    learning_rate=0.01).minimize(ae['cost_s'])
+        elif classifier == 'inception_v1':
+            optimizer_softmax = tf.train.GradientDescentOptimizer(
+                                    learning_rate=0.01).minimize(ae['cost_s'])
+        elif (classifier == 'squeezenet') or (classifier == 'zigzagnet'):
+            optimizer_softmax = tf.train.GradientDescentOptimizer(
+                                    learning_rate=0.01).minimize(ae['cost_s'])
+        elif classifier == 'alexnet_v2':
+            optimizer_softmax = tf.train.GradientDescentOptimizer(
+                                    learning_rate=0.01).minimize(ae['cost_s'])
+        else:
+            optimizer_softmax = tf.train.GradientDescentOptimizer(
+                                    learning_rate=0.001).minimize(ae['cost_s'])
 
     # We create a session to use the graph
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.55)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
+
+    # Write a summary for Tensorboard
+    train_writer = tf.summary.FileWriter('./summary', sess.graph)
+
+    # initialize
     sess.run(tf.global_variables_initializer())
 
     # This will handle our threaded image pipeline
@@ -494,123 +548,316 @@ def train_vae(files_img,
 
     # Fit all training data
     t_i = 0
+    step_i = 0
     batch_i = 0
     epoch_i = 0
+    summary_i = 0
     cost = 0
-    if use_csv:
-        with open(files_img,"r") as f:
-            reader = csv.reader(f,delimiter = ",")
-            data = list(reader)
-            n_files = len(data)
-    else:
-        n_files = len(files_img)
+    # Test samples of training data from ShapeNet
     test_xs_obj, test_xs_label = sess.run([batch_obj, batch_label_o])
-    test_xs_obj = test_xs_obj / 255.0
-    utils.montage(test_xs_obj, 'test_xs_obj.png')
+    test_xs_obj /= 255.0
+    utils.montage(test_xs_obj, 'train_obj.png')
     test_xs_img, test_xs_label = sess.run([batch_img, batch_label_i])
-    test_xs_img = test_xs_img / 255.0
-    utils.montage(test_xs_img, 'test_xs_img.png')
+    test_xs_img /= 255.0
+    utils.montage(test_xs_img, 'train_img.png')
+
+    # Test samples of testing data from ImageNet
+    test_imagenet_img, test_imagenet_label = \
+                        sess.run([batch_imagenet, batch_imagenet_label])
+    test_imagenet_img /= 255.0
+    utils.montage(test_imagenet_img, 'test_imagenet_img.png')
+
+    # Test samples of testing data from PASCAL 2012
+    test_pascal_img, test_pascal_label = \
+                        sess.run([batch_pascal, batch_pascal_label])
+    test_pascal_img /= 255.0
+    utils.montage(test_pascal_img, 'test_pascal_img.png')
+
+    # Test samples of testing data from ShapeNet test data
+    test_shapenet_img, test_shapenet_label = \
+                        sess.run([batch_shapenet, batch_shapenet_label])
+    test_shapenet_img /= 255.0
+    utils.montage(test_shapenet_img, 'test_shapenet_img.png')
     try:
         while not coord.should_stop():
             batch_i += 1
+            step_i += 1
             batch_xs_img, batch_xs_label = sess.run([batch_img, batch_label_i])
-            batch_xs_img = batch_xs_img / 255.0
+            batch_xs_img /= 255.0
             batch_xs_obj, batch_xs_label2 = sess.run([batch_obj, batch_label_o])
-            batch_xs_obj = batch_xs_obj / 255.0
+            batch_xs_obj /= 255.0
             #import pdb; pdb.set_trace()
             assert batch_xs_label.all() == batch_xs_label2.all()
-            train_cost_vae = sess.run([ae['cost'], optimizer_vae], feed_dict={
-                ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
-                ae['x_label']: batch_xs_label, ae['train']: True,
-                ae['keep_prob']: keep_prob, ae['corrupt_prob']: corrupt_prob})[0]
-            cost += train_cost_vae
-            if softmax:
-                train_cost_softmax = sess.run([ae['cost_s'], optimizer_softmax], feed_dict={
-                    ae['x_img']: batch_xs_img, ae['x_obj']: batch_xs_obj,
-                    ae['x_label']: batch_xs_label, ae['train']: True,
-                    ae['keep_prob']: keep_prob, ae['corrupt_prob']: corrupt_prob})[0]
-                cost += train_cost_softmax
-            if batch_i % n_files == 0:
-                batch_i = 0
-                epoch_i += 1
 
-            if batch_i % img_step == 0:
+            # Here we must set corrupt_rec and corrupt_cls as 0 to find a
+            # proper ratio of variance to feed for variable var_prob.
+            # We use tanh as non-linear function for ratio of Vars from
+            # the reconstructed channels and original channels
+            var_prob = sess.run(ae['var_prob'],
+                        feed_dict={
+                            ae['x_img']: test_xs_img,
+                            ae['x_label']: test_xs_label,
+                            ae['train']: True,
+                            ae['keep_prob']: 1.0,
+                            ae['corrupt_rec']: 0,
+                            ae['corrupt_cls']: 0})
+            corrupt_rec = np.tanh(0.25*var_prob)
+            corrupt_cls = 1-var_prob
+
+            # Optimizing reconstruction network
+            cost_vae = sess.run(
+                [ae['cost_vae'], optimizer_vae],
+                feed_dict={
+                    ae['x_img']: batch_xs_img,
+                    ae['x_obj']: batch_xs_obj,
+                    ae['x_label']: batch_xs_label,
+                    ae['train']: True,
+                    ae['keep_prob']: keep_prob,
+                    ae['corrupt_rec']: corrupt_rec,
+                    ae['corrupt_cls']: corrupt_cls})[0]
+            cost += cost_vae
+            if softmax:
+
+                # Optimizing classification network
+                cost_s = sess.run(
+                    [ae['cost_s'], optimizer_softmax],
+                    feed_dict={
+                        ae['x_img']: batch_xs_img,
+                        ae['x_obj']: batch_xs_obj,
+                        ae['x_label']: batch_xs_label,
+                        ae['train']: True,
+                        ae['keep_prob']: keep_prob,
+                        ae['corrupt_rec']: corrupt_rec,
+                        ae['corrupt_cls']: corrupt_cls})[0]
+                cost += cost_s
+
+            if step_i % img_step == 0:
                 if variational:
                     # Plot example reconstructions from latent layer
                     recon = sess.run(
                         ae['y'], feed_dict={
-                            ae['z']: zs,
-                            ae['train']: False,
-                            ae['keep_prob']: 1.0,
-                            ae['corrupt_prob']: 0})
+                                    ae['z']: zs,
+                                    ae['train']: False,
+                                    ae['keep_prob']: 1.0,
+                                    ae['corrupt_rec']: 0,
+                                    ae['corrupt_cls']: 0})
                     utils.montage(recon.reshape([-1] + crop_shape),
                                   'manifold_%08d.png' % t_i)
 
                 # Plot example reconstructions
                 recon = sess.run(
-                    ae['y'], feed_dict={ae['x_img']: test_xs_img,
-                                        ae['train']: False,
-                                        ae['keep_prob']: 1.0,
-                                        ae['corrupt_prob']: 0})
+                    ae['y'], feed_dict={
+                                ae['x_img']: test_xs_img,
+                                ae['train']: False,
+                                ae['keep_prob']: 1.0,
+                                ae['corrupt_rec']: 0,
+                                ae['corrupt_cls']: 0})
                 utils.montage(recon.reshape([-1] + crop_shape),
-                              'reconstruction_%08d.png' % t_i)
+                              'recon_%08d.png' % t_i)
                 """
                 filters = sess.run(
-                  ae['Ws'], feed_dict={ae['x_img']: test_xs_img,
-                                      ae['train']: False,
-                                      ae['keep_prob']: 1.0,
-                                      ae['corrupt_prob']: 0})
+                  ae['Ws'], feed_dict={
+                              ae['x_img']: test_xs_img,
+                              ae['train']: False,
+                              ae['keep_prob']: 1.0,
+                              ae['corrupt_rec']: 0,
+                              ae['corrupt_cls']: 0})
                 #for filter_element in filters:
                 utils.montage_filters(filters[-1],
                             'filter_%08d.png' % t_i)
                 """
-                t_i += 1
 
-            if batch_i % save_step == 0:
-                # print(train_cost_softmax)
-                # Save the variables to disk.
-                saver.save(sess, "./" + ckpt_name,
-                           global_step=batch_i,
-                           write_meta_graph=False)
-                if softmax:
-                    acc = sess.run(
-                        ae['acc'], feed_dict={ae['x_img']: test_xs_img,
-                                            ae['x_label']: test_xs_label,
-                                            ae['train']: False,
-                                            ae['keep_prob']: 1.0,
-                                            ae['corrupt_prob']: 0})
-                    print("VAE loss = %d, SM loss = %.3f, Accuracy = %.3f" %
-                        (train_cost_vae, train_cost_softmax, acc.tolist().count(True)/acc.size))
-                else:
-                    print("VAE loss = %d" % train_cost_vae)
-
-            if batch_i % (save_step*20) == 0:
-                with open('/Users/yidawang/Documents/pynote/list_annotated_imagenet.csv', 'rb') as csvfile:
+                # Test on ImageNet samples
+                with open('../list_annotated_imagenet.csv', 'r') as csvfile:
+                    spamreader = csv.reader(csvfile)
                     rows = list(spamreader)
                     totalrows = len(rows)
-                num_batches = floor(totalrows/batch_size)
+                num_batches = np.int_(np.floor(totalrows/batch_size))
                 accumulated_acc = 0
                 for index_batch in range(1, num_batches+1):
-                    batch_real, batch_real_label = create_input_pipeline(
-                        files="/Users/yidawang/Documents/pynote/list_annotated_imagenet.csv",
-                        batch_size=batch_size,
-                        n_epochs=n_epochs,
-                        crop_shape=crop_shape,
-                        crop_factor=crop_factor,
-                        shape=input_shape,
-                        seed=seed,
-                        use_csv=use_csv)
-                    test_real, test_real_label = sess.run([batch_real, batch_real_label])
-                    test_real = test_real / 255.0
-                    acc = sess.run(
-                        ae['acc'], feed_dict={ae['x_img']: test_real,
-                                            ae['x_label']: test_real_label,
-                                            ae['train']: False,
-                                            ae['keep_prob']: 1.0,
-                                            ae['corrupt_prob']: 0})
-                    accumulated_acc = accumulated_acc + acc.tolist().count(True)/acc.size
-                accumulated_acc = accumulated_acc/num_batches
-                print("Accuracy of real images= %.3f" % (accumulated_acc))
+                    test_image, test_label = sess.run(
+                                        [batch_imagenet, batch_imagenet_label])
+                    test_image /= 255.0
+                    acc, z_codes, sm_codes = sess.run(
+                                    [ae['acc'], ae['z'], ae['predictions']],
+                                    feed_dict={
+                                        ae['x_img']: test_image,
+                                        ae['x_label']: test_label,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_rec']: 0,
+                                        ae['corrupt_cls']: 0})
+                    accumulated_acc += acc.tolist().count(True)/acc.size
+                    if index_batch == 1:
+                        z_imagenet = z_codes
+                        sm_imagenet = sm_codes
+                        labels_imagenet = test_label
+                        # Plot example reconstructions
+                        recon = sess.run(ae['y'],
+                                    feed_dict={
+                                        ae['x_img']: test_imagenet_img,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_rec']: 0,
+                                        ae['corrupt_cls']: 0})
+                        utils.montage(recon.reshape([-1] + crop_shape),
+                                      'recon_imagenet_%08d.png' % t_i)
+                    else:
+                        z_imagenet = np.append(z_imagenet, z_codes, axis=0)
+                        sm_imagenet = np.append(sm_imagenet, sm_codes, axis=0)
+                        labels_imagenet = np.append(labels_imagenet, test_label,
+                                                    axis=0)
+                if variational:
+                    mat = np.append(labels_imagenet, z_imagenet, axis=1)
+                    np.save('feat_imagenet_z_%08d.npy' % t_i, mat)
+                mat = np.append(labels_imagenet, sm_imagenet, axis=1)
+                np.save('feat_imagenet_sm_%08d.npy' % t_i, mat)
+                accumulated_acc /= num_batches
+                print("Accuracy of ImageNet images= %.3f" % (accumulated_acc))
+
+                # Test on PASCAL 2012 samples
+                with open('../list_annotated_pascal.csv', 'r') as csvfile:
+                    spamreader = csv.reader(csvfile)
+                    rows = list(spamreader)
+                    totalrows = len(rows)
+                num_batches = np.int_(np.floor(totalrows/batch_size))
+                accumulated_acc = 0
+                for index_batch in range(1, num_batches+1):
+                    test_image, test_label = sess.run(
+                                    [batch_pascal, batch_pascal_label])
+                    test_image /= 255.0
+                    acc, z_codes, sm_codes = sess.run(
+                                    [ae['acc'], ae['z'], ae['predictions']],
+                                    feed_dict={
+                                        ae['x_img']: test_image,
+                                        ae['x_label']: test_label,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_rec']: 0,
+                                        ae['corrupt_cls']: 0})
+                    accumulated_acc += acc.tolist().count(True)/acc.size
+                    if index_batch == 1:
+                        z_pascal = z_codes
+                        sm_pascal = sm_codes
+                        labels_pascal = test_label
+                        # Plot example reconstructions
+                        recon = sess.run(ae['y'],
+                                    feed_dict={
+                                        ae['x_img']: test_pascal_img,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_rec']: 0,
+                                        ae['corrupt_cls']: 0})
+                        utils.montage(recon.reshape([-1] + crop_shape),
+                                      'recon_pascal_%08d.png' % t_i)
+                    else:
+                        z_pascal = np.append(z_pascal, z_codes, axis=0)
+                        sm_pascal = np.append(sm_pascal, sm_codes, axis=0)
+                        labels_pascal = np.append(labels_pascal, test_label,
+                                                  axis=0)
+                if variational:
+                    mat = np.append(labels_pascal, z_pascal, axis=1)
+                    np.save('feat_pascal_z_%08d.npy' % t_i, mat)
+                mat = np.append(labels_pascal, sm_pascal, axis=1)
+                np.save('feat_pascal_sm_%08d.npy' % t_i, mat)
+                accumulated_acc /= num_batches
+                print("Accuracy of PASCAL images= %.3f" % (accumulated_acc))
+
+                # Test on ShapeNet test samples
+                with open('../list_annotated_img_test.csv', 'r') as csvfile:
+                    spamreader = csv.reader(csvfile)
+                    rows = list(spamreader)
+                    totalrows = len(rows)
+                num_batches = np.int_(np.floor(totalrows/batch_size))
+                accumulated_acc = 0
+                for index_batch in range(1, num_batches+1):
+                    test_image, test_label = sess.run(
+                                    [batch_shapenet, batch_shapenet_label])
+                    test_image /= 255.0
+                    acc, z_codes, sm_codes = sess.run(
+                                    [ae['acc'], ae['z'], ae['predictions']],
+                                    feed_dict={
+                                        ae['x_img']: test_image,
+                                        ae['x_label']: test_label,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_rec']: 0,
+                                        ae['corrupt_cls']: 0})
+                    accumulated_acc += acc.tolist().count(True)/acc.size
+                    if index_batch == 1:
+                        z_shapenet = z_codes
+                        sm_shapenet = sm_codes
+                        labels_shapenet = test_label
+                        # Plot example reconstructions
+                        recon = sess.run(ae['y'],
+                                    feed_dict={
+                                        ae['x_img']: test_shapenet_img,
+                                        ae['train']: False,
+                                        ae['keep_prob']: 1.0,
+                                        ae['corrupt_rec']: 0,
+                                        ae['corrupt_cls']: 0})
+                        utils.montage(recon.reshape([-1] + crop_shape),
+                                      'recon_shapenet_%08d.png' % t_i)
+                    else:
+                        z_shapenet = np.append(z_shapenet, z_codes, axis=0)
+                        sm_shapenet = np.append(sm_shapenet, sm_codes, axis=0)
+                        labels_shapenet = np.append(labels_shapenet, test_label,
+                                                    axis=0)
+                if variational:
+                    mat = np.append(labels_shapenet, z_shapenet, axis=1)
+                    np.save('feat_shapenet_z_%08d.npy' % t_i, mat)
+                mat = np.append(labels_shapenet, sm_shapenet, axis=1)
+                np.save('feat_shapenet_sm_%08d.npy' % t_i, mat)
+                accumulated_acc /= num_batches
+                print("Accuracy of ShapeNet images= %.3f" % (accumulated_acc))
+
+                t_i += 1
+
+            if step_i % save_step == 0:
+
+                # Save the variables to disk.
+                saver.save(sess, "./" + ckpt_name,
+                           global_step=step_i,
+                           write_meta_graph=False)
+                if softmax:
+                    acc = sess.run(ae['acc'],
+                                feed_dict={
+                                    ae['x_img']: test_xs_img,
+                                    ae['x_label']: test_xs_label,
+                                    ae['train']: False,
+                                    ae['keep_prob']: 1.0,
+                                    ae['corrupt_rec']: 0,
+                                    ae['corrupt_cls']: 0})
+
+                    print("epoch %d: VAE = %d, SM = %.3f, Acc = %.3f, R_Var = %.3f, Cpt_R = %.3f, Cpt_C = %.3f" %
+                          (epoch_i,
+                          cost_vae,
+                          cost_s,
+                          acc.tolist().count(True)/acc.size,
+                          var_prob,
+                          corrupt_rec,
+                          corrupt_cls))
+
+                    # Summary recording to Tensorboard
+                    summary = sess.run(ae['merged'],
+                                feed_dict={
+                                    ae['x_img']: batch_xs_img,
+                                    ae['x_obj']: batch_xs_obj,
+                                    ae['x_label']: batch_xs_label,
+                                    ae['train']: False,
+                                    ae['keep_prob']: keep_prob,
+                                    ae['corrupt_rec']: corrupt_rec,
+                                    ae['corrupt_cls']: corrupt_cls})
+
+                    summary_i += 1
+                    train_writer.add_summary(summary, summary_i)
+                else:
+                    print("VAE loss = %d" % cost_vae)
+
+            if batch_i > (n_files/batch_size):
+                batch_i = 0
+                epoch_i += 1
+
     except tf.errors.OutOfRangeError:
         print('Done.')
     finally:
