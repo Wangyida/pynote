@@ -3,6 +3,30 @@ TensorFlow implementation for Adaptive noise assisted Conjugating Generative Mod
 
 Copyright reserved for Yida Wang from BUPT.
 
+## Figures in the paper
+### Method Pipeline
+
+This is the basic pipeline for AD-CGM
+![Pipeline](/images/pipeline_tip.eps)
+
+### Target
+
+There are two set of rendered images from 3D models, here we use *VTK* for rendering.
+![](/images/target.jpg)
+
+### Results on ShapeNet
+
+![Input](/images/test_shapenet_img.jpg) ![Output](/images/ADCGM_shapenet_test.jpg)
+
+### Results on ImageNet
+
+![Input](/images/test_imagenet_img.jpg) ![Output](/images/ADCGM_imagenet_test.jpg)
+
+### Data Distribution
+
+![ShapeNet](/images/lowdim_ADCGM_shapenet.jpg) ![ImageNet](/images/lowdim_ADCGM_shapenet.jpg)
+
+
 ## Author info
 
 ### Basic info
