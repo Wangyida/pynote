@@ -351,6 +351,7 @@ recon = sess.run(
                 ae['corrupt_cls']: 0})
 utils.montage(recon.reshape([-1] + crop_shape),
               'recon_%08d.png' % t_i)
+```
 
 Plot filters
 ```python
