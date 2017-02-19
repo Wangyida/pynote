@@ -276,7 +276,7 @@ def VAE(input_shape=[None, 784],
                                           k_w=3)
                 Ws.append(W)
 
-        # SqueezeNet
+        # The following are optional networks for classification network
         if classifier == 'squeezenet':
             predictions, net = squeezenet.squeezenet(
                         y_concat, num_classes=13)
@@ -362,48 +362,54 @@ def train_vae(files_img,
     Parameters
     ----------
     files : list of strings
-        List of paths to images.
+    List of paths to images.
     input_shape : list
-        Must define what the input image's shape is.
+    Must define what the input image's shape is.
+    use_csv = bool, optional
+    Use csv files to train conditional VAE or just VAE.
     learning_rate : float, optional
-        Learning rate.
+    Learning rate.
     batch_size : int, optional
-        Batch size.
+    Batch size.
     n_epochs : int, optional
-        Number of epochs.
+    Number of epochs.
     n_examples : int, optional
-        Number of example to use while demonstrating the current training
-        iteration's reconstruction.  Creates a square montage, so make
-        sure int(sqrt(n_examples))**2 = n_examples, e.g. 16, 25, 36, ... 100.
+    Number of example to use while demonstrating the current training
+    iteration's reconstruction.  Creates a square montage, so make
+    sure int(sqrt(n_examples))**2 = n_examples, e.g. 16, 25, 36, ... 100.
     crop_shape : list, optional
-        Size to centrally crop the image to.
+    Size to centrally crop the image to.
     crop_factor : float, optional
-        Resize factor to apply before cropping.
+    Resize factor to apply before cropping.
     n_filters : list, optional
-        Same as VAE's n_filters.
+    Same as VAE's n_filters.
     n_hidden : int, optional
-        Same as VAE's n_hidden.
+    Same as VAE's n_hidden.
     n_code : int, optional
-        Same as VAE's n_code.
+    Same as VAE's n_code.
     convolutional : bool, optional
-        Use convolution or not.
+    Use convolution or not.
     variational : bool, optional
-        Use variational layer or not.
+    Use variational layer or not.
+    softmax : bool, optional
+    Use the classification network or not.
+    classifier : str, optional
+    Network for classification.
     filter_sizes : list, optional
-        Same as VAE's filter_sizes.
+    Same as VAE's filter_sizes.
     dropout : bool, optional
-        Use dropout or not
+    Use dropout or not
     keep_prob : float, optional
-        Percent of keep for dropout.
+    Percent of keep for dropout.
     activation : function, optional
-        Which activation function to use.
+    Which activation function to use.
     img_step : int, optional
-        How often to save training images showing the manifold and
-        reconstruction.
+    How often to save training images showing the manifold and
+    reconstruction.
     save_step : int, optional
-        How often to save checkpoints.
+    How often to save checkpoints.
     ckpt_name : str, optional
-        Checkpoints will be named as this, e.g. 'model.ckpt'
+    Checkpoints will be named as this, e.g. 'model.ckpt'
     """
     tf.set_random_seed(1)
     seed=1
@@ -523,8 +529,8 @@ def train_vae(files_img,
             optimizer_softmax = tf.train.GradientDescentOptimizer(
                                     learning_rate=0.001).minimize(ae['cost_s'])
 
-    # We create a session to use the graph
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7)
+    # We create a session to use the graph together with a GPU declaration.
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     saver = tf.train.Saver()
 
@@ -601,8 +607,10 @@ def train_vae(files_img,
                             ae['keep_prob']: 1.0,
                             ae['corrupt_rec']: 0,
                             ae['corrupt_cls']: 0})
+
+            # Here is a fast training process
             corrupt_rec = np.tanh(0.25*var_prob)
-            corrupt_cls = 1-var_prob
+            corrupt_cls = np.tanh(1-np.tanh(2*var_prob))
 
             # Optimizing reconstruction network
             cost_vae = sess.run(

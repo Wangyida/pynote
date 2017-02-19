@@ -74,6 +74,7 @@ There is also implementation of ZigzagNet and SqueezeNet for compact deep learni
 
 ## Codes Explanation
 
+### Training and Testing Strategies
 network input / placeholders for train (bn) and dropout
 ```python
     x_img = tf.placeholder(tf.float32, input_shape, 'x_img')
@@ -235,8 +236,12 @@ Loss finctions of VAE and softmax
                                           k_h=3,
                                           k_w=3)
                 Ws.append(W)
+```
 
-        # SqueezeNet
+There are several optional choices for classification network. Just modify the parameter ```classifier```.
+```python
+
+        # The following are optional networks for classification network
         if classifier == 'squeezenet':
             predictions, net = squeezenet.squeezenet(
                         y_concat, num_classes=13)
@@ -255,49 +260,36 @@ Loss finctions of VAE and softmax
         elif classifier == 'inception_v3':
             predictions, end_points = inception.inception_v3(
                         y_concat, num_classes=13)
-
-        x_label_onehot = tf.squeeze(tf.one_hot(x_label, 13, 1, 0), [1])
-        slim.losses.softmax_cross_entropy(predictions, x_label_onehot)
-        cost_s = slim.losses.get_total_loss()
 ```
 
-Main API for training and testing
+Here we must set corrupt_rec and corrupt_cls as 0 to find a proper ratio of variance to feed for variable var_prob. We use tanh as non-linear function for ratio of Vars from the reconstructed channels and original channels.
 ```python
-def train_vae(files_img,
-              files_obj,
-              input_shape,
-              use_csv=False,
-              learning_rate=0.0001,
-              batch_size=100,
-              n_epochs=50,
-              n_examples=121,
-              crop_shape=[128, 128, 3],
-              crop_factor=0.8,
-              n_filters=[75, 100, 100, 100, 100],
-              n_hidden=256,
-              n_code=50,
-              denoising=True,
-              convolutional=True,
-              variational=True,
-              softmax=False,
-              classifier='alexnet_v2',
-              filter_sizes=[3, 3, 3, 3],
-              dropout=True,
-              keep_prob=0.8,
-              activation=tf.nn.relu,
-              img_step=2500,
-              save_step=100,
-              ckpt_name="./vae.ckpt"):
-    """General purpose training of a (Variational) (Convolutional) Autoencoder.
+var_prob = sess.run(ae['var_prob'],
+            feed_dict={
+                ae['x_img']: test_xs_img,
+                ae['x_label']: test_xs_label,
+                ae['train']: True,
+                ae['keep_prob']: 1.0,
+                ae['corrupt_rec']: 0,
+                ae['corrupt_cls']: 0})
 
-    Supply a list of file paths to images, and this will do everything else.
+# Here is a fast training process
+corrupt_rec = np.tanh(0.25*var_prob)
+corrupt_cls = np.tanh(1-np.tanh(2*var_prob))
+```
 
+Main API for training and testing. General purpose training of a (Variational) (Convolutional) Autoencoder.
+```python
+def train_vae(files_img, files_obj, input_shape):
+    """
     Parameters
     ----------
     files : list of strings
         List of paths to images.
     input_shape : list
         Must define what the input image's shape is.
+    use_csv = bool, optional
+        Use csv files to train conditional VAE or just VAE.
     learning_rate : float, optional
         Learning rate.
     batch_size : int, optional
@@ -322,6 +314,10 @@ def train_vae(files_img,
         Use convolution or not.
     variational : bool, optional
         Use variational layer or not.
+    softmax : bool, optional
+        Use the classification network or not.
+    classifier : str, optional
+        Network for classification.
     filter_sizes : list, optional
         Same as VAE's filter_sizes.
     dropout : bool, optional
@@ -339,3 +335,33 @@ def train_vae(files_img,
         Checkpoints will be named as this, e.g. 'model.ckpt'
     """
 ```
+
+### Visualization for Outputs and Parameters
+
+We can visualize filters, reconstruction channels and also outputs according to latent variables.
+
+Plot example reconstructions
+```python
+recon = sess.run(
+    ae['y'], feed_dict={
+                ae['x_img']: test_xs_img,
+                ae['train']: False,
+                ae['keep_prob']: 1.0,
+                ae['corrupt_rec']: 0,
+                ae['corrupt_cls']: 0})
+utils.montage(recon.reshape([-1] + crop_shape),
+              'recon_%08d.png' % t_i)
+
+Plot filters
+```python
+filters = sess.run(
+  ae['Ws'], feed_dict={
+              ae['x_img']: test_xs_img,
+              ae['train']: False,
+              ae['keep_prob']: 1.0,
+              ae['corrupt_rec']: 0,
+              ae['corrupt_cls']: 0})
+#for filter_element in filters:
+utils.montage_filters(filters[-1],
+            'filter_%08d.png' % t_i)
+```            
