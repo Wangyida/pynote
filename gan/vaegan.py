@@ -1,8 +1,13 @@
-"""Convolutional/Variational autoencoder, including demonstration of
-training such a network on MNIST, CelebNet and the film, "Sita Sings The Blues"
-using an image pipeline.
+"""
+TensorFlow implementation for CVAE and GAN, this project is
+implemented based on VAE code pool of Parag K. Mital from Kadenze course
+on Tensorflow and modified by Yida Wang for the paper of
+'Conjugating Generative Model for Object Recognition Based on 3D Models'.
 
-Parag K. Mital, Jan 2016
+There is also implementation of ZigzagNet and SqueezeNet for compact deep
+learninig for classifcation.
+
+Copyright reserved for Yida Wang from BUPT.
 """
 import tensorflow as tf
 import numpy as np
@@ -343,11 +348,11 @@ def VAE(input_shape=[None, 784],
                            activation=activation)
 
     x_tilde = decoding['x_tilde']
-    x_flat_obj = flatten(x_obj)
+    x_flat_img = flatten(x_img)
     x_tilde_flat = flatten(x_tilde)
 
     # -log(p(x|z))
-    loss_x = tf.reduce_sum(tf.squared_difference(x_flat_obj, x_tilde_flat), 1)
+    loss_x = tf.reduce_sum(tf.squared_difference(x_flat_img, x_tilde_flat), 1)
     return {'loss_x': loss_x, 'loss_z': loss_z, 'x_img': x_img, 'x_obj': x_obj, 'z': z,
             'Ws': encoding['Ws'], 'hs': decoding['hs'],
             'x_tilde': x_tilde}

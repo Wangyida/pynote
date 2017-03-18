@@ -1,8 +1,13 @@
-"""Convolutional/Variational autoencoder, including demonstration of
-training such a network on MNIST, CelebNet and the film, "Sita Sings The Blues"
-using an image pipeline.
+"""
+TensorFlow implementation for Conditional Variational Autoencoder, this project is
+implemented based on VAE code pool of Parag K. Mital from Kadenze course
+on Tensorflow and modified by Yida Wang for the paper of
+'Conjugating Generative Model for Object Recognition Based on 3D Models'.
 
-Copyright Parag K. Mital, January 2016
+There is also implementation of ZigzagNet and SqueezeNet for compact deep
+learninig for classifcation.
+
+Copyright reserved for Yida Wang from BUPT.
 """
 import tensorflow as tf
 import numpy as np
