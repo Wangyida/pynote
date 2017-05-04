@@ -170,7 +170,7 @@ def VAE(input_shape=[None, 784],
                 tf.stack([tf.shape(x_img)[0], n_code]))
 
             # Sample from posterior
-            z = z_mu + tf.mul(epsilon, tf.exp(z_log_sigma))
+            z = z_mu + tf.multiply(epsilon, tf.exp(z_log_sigma))
 
             if n_hidden:
                 h = utils.linear(z, n_hidden, name='fc_t')[0]
@@ -260,7 +260,7 @@ def VAE(input_shape=[None, 784],
         current_input2 = utils.to_tensor(current_input2) \
                     if convolutional else current_input2
 
-        y_concat = tf.concat_v2([current_input2, y], 3)
+        y_concat = tf.concat([current_input2, y], 3)
         with tf.variable_scope('deconv/concat'):
             shape = shapes[layer_i + 1]
             if convolutional:
@@ -316,12 +316,19 @@ def VAE(input_shape=[None, 784],
     tf.summary.scalar('var_prob', var_prob)
     merged = tf.summary.merge_all()
 
-    return {'cost_vae': cost_vae, 'cost_s': cost_s,
-            'loss_x': loss_x, 'loss_z': loss_z,
+    return {'cost_vae': cost_vae,
+            'cost_s': cost_s,
+            'loss_x': loss_x,
+            'loss_z': loss_z,
             'Ws': Ws,
-            'x_img': x_img, 'x_obj': x_obj, 'x_label': x_label,
-            'x_label_onehot': x_label_onehot, 'predictions': predictions,
-            'z': z, 'y': y, 'acc': acc,
+            'x_img': x_img,
+            'x_obj': x_obj,
+            'x_label': x_label,
+            'x_label_onehot': x_label_onehot,
+            'predictions': predictions,
+            'z': z,
+            'y': y,
+            'acc': acc,
             'keep_prob': keep_prob,
             'corrupt_rec': corrupt_rec,
             'corrupt_cls': corrupt_cls,
@@ -333,7 +340,7 @@ def VAE(input_shape=[None, 784],
 def train_vae(files_img,
               files_obj,
               input_shape,
-              use_csv=False,
+              type_input='csv_path',
               learning_rate=0.0001,
               batch_size=100,
               n_epochs=50,
@@ -365,7 +372,7 @@ def train_vae(files_img,
     List of paths to images.
     input_shape : list
     Must define what the input image's shape is.
-    use_csv = bool, optional
+    type_input = str, optional
     Use csv files to train conditional VAE or just VAE.
     learning_rate : float, optional
     Learning rate.
@@ -421,7 +428,7 @@ def train_vae(files_img,
         crop_factor=crop_factor,
         shape=input_shape,
         seed=seed,
-        use_csv=use_csv)
+        type_input=type_input)
 
     batch_img, batch_label_i = create_input_pipeline(
         files=files_img,
@@ -431,7 +438,7 @@ def train_vae(files_img,
         crop_factor=crop_factor,
         shape=input_shape,
         seed=seed,
-        use_csv=use_csv)
+        type_input=type_input)
 
     if softmax:
         batch_imagenet, batch_imagenet_label = create_input_pipeline(
@@ -442,7 +449,7 @@ def train_vae(files_img,
             crop_factor=crop_factor,
             shape=input_shape,
             seed=seed,
-            use_csv=use_csv)
+            type_input=type_input)
         batch_pascal, batch_pascal_label = create_input_pipeline(
             files="../list_annotated_pascal.csv",
             batch_size=batch_size,
@@ -451,7 +458,7 @@ def train_vae(files_img,
             crop_factor=crop_factor,
             shape=input_shape,
             seed=seed,
-            use_csv=use_csv)
+            type_input=type_input)
         batch_shapenet, batch_shapenet_label = create_input_pipeline(
             files="../list_annotated_img_test.csv",
             batch_size=batch_size,
@@ -460,7 +467,7 @@ def train_vae(files_img,
             crop_factor=crop_factor,
             shape=input_shape,
             seed=seed,
-            use_csv=use_csv)
+            type_input=type_input)
 
 
     ae = VAE(input_shape=[None] + crop_shape,
@@ -476,7 +483,7 @@ def train_vae(files_img,
              activation=activation,
              classifier=classifier)
 
-    if use_csv:
+    if (type_input == 'csv_path' or type_input == 'csv_feature'):
         with open(files_img,"r") as f:
             reader = csv.reader(f,delimiter = ",")
             data = list(reader)
@@ -520,8 +527,11 @@ def train_vae(files_img,
             optimizer_softmax = tf.train.GradientDescentOptimizer(
                                     learning_rate=0.01).minimize(ae['cost_s'])
         elif (classifier == 'squeezenet') or (classifier == 'zigzagnet'):
-            optimizer_softmax = tf.train.GradientDescentOptimizer(
-                                    learning_rate=0.01).minimize(ae['cost_s'])
+            optimizer_softmax = tf.train.RMSPropOptimizer(
+                                    0.04,
+                                    decay=0.9,
+                                    momentum=0.9,
+                                    epsilon=0.1).minimize(ae['cost_s'])
         elif classifier == 'alexnet_v2':
             optimizer_softmax = tf.train.GradientDescentOptimizer(
                                     learning_rate=0.01).minimize(ae['cost_s'])

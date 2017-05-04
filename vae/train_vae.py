@@ -116,7 +116,6 @@ tf.reset_default_graph()
 vae.train_vae(files_img,
               files_obj,
               input_shape,
-              use_csv=use_csv,
               learning_rate=0.0001,
               batch_size=36,
               n_epochs=50,

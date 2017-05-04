@@ -13,7 +13,7 @@ from . import dft
 
 
 def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
-                          crop_factor=None, n_threads=1, seed=1, use_csv=False):
+                          crop_factor=None, n_threads=1, seed=1, type_input='csv_path'):
     """Creates a pipefile from a list of image files.
     Includes batch generator/central crop/resizing options.
     The resulting generator will dequeue the images batch_size at a time until
@@ -44,23 +44,32 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     # Put simply, this is the entry point of the computational graph.
     # It will generate the list of file names.
     # We also specify it's capacity beforehand.
-    if use_csv:
+    if type_input == 'csv_path':
         filename_queue = tf.train.string_input_producer(
             [files], shuffle=False, seed=seed)
         reader = tf.TextLineReader()
         _, csv_content = reader.read(filename_queue)
-
         record_defaults = [[""], [1]]
         img_path, img_cat_temp = tf.decode_csv(
-            csv_content, record_defaults=record_defaults)
+            csv_content, record_defaults = record_defaults, field_delim=",")
         img_cat = tf.stack([img_cat_temp])
-        vals = tf.read_file(img_path)
-        imgs = tf.image.decode_jpeg(
-            vals,
+        imgs = tf.image.decode_jpeg(tf.read_file(img_path),
             channels=3 if len(shape) > 2 and shape[2] == 3 else 0)
+
+    elif type_input == 'csv_featrue':
+        filename_queue = tf.train.string_input_producer(
+            [files], shuffle=False, seed=seed)
+        reader = tf.TextLineReader()
+        _, csv_content = reader.read(filename_queue)
+        record_defaults = [[0.0]]*766
+        columns = tf.decode_csv(
+            csv_content, record_defaults = record_defaults, field_delim=",")
+        img_cat = tf.stack([columns[2]])
+        imgs = tf.stack(columns)
+
     else:
         producer = tf.train.string_input_producer(
-            files, capacity=len(files), shuffle=True, seed=seed)
+            [files], capacity=len(files), shuffle=True, seed=seed)
 
         # We need something which can open the files and read its contents.
         reader = tf.WholeFileReader()
@@ -94,6 +103,27 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
         if crop_shape is not None
         else imgs)
 
+    if type_input != 'csv_featrue':
+        # We have to explicitly define the shape of the tensor.
+        # This is because the decode_jpeg operation is still a node in the graph
+        # and doesn't yet know the shape of the image.  Future operations however
+        # need explicit knowledge of the image's shape in order to be created.
+        imgs.set_shape(shape)
+
+        # Next we'll centrally crop the image to the size of 100x100.
+        # This operation required explicit knowledge of the image's shape.
+        if shape[0] > shape[1]:
+            rsz_shape = [int(shape[0] / shape[1] * crop_shape[0] / crop_factor),
+                         int(crop_shape[1] / crop_factor)]
+        else:
+            rsz_shape = [int(crop_shape[0] / crop_factor),
+                         int(shape[1] / shape[0] * crop_shape[1] / crop_factor)]
+        rszs = tf.image.resize_images(imgs, rsz_shape)
+        crops = (tf.image.resize_image_with_crop_or_pad(
+            rszs, crop_shape[0], crop_shape[1])
+            if crop_shape is not None
+            else imgs)
+
     # Now we'll create a batch generator that will also shuffle our examples.
     # We tell it how many it should have in its buffer when it randomly
     # permutes the order.
@@ -105,20 +135,26 @@ def create_input_pipeline(files, batch_size, n_epochs, shape, crop_shape=None,
     capacity = min_after_dequeue + (n_threads + 1) * batch_size
 
     # Randomize the order and output batches of batch_size.
-    """
-    batch = tf.train.shuffle_batch([crops],
-                                   enqueue_many=False,
-                                   batch_size=batch_size,
-                                   capacity=capacity,
-                                   min_after_dequeue=min_after_dequeue,
-                                   num_threads=n_threads,
-                                   seed=seed)
+    if type_input == 'csv_path':
+        batch_image, batch_label = tf.train.batch([crops, img_cat],
+                                                   batch_size=batch_size,
+                                                   num_threads=n_threads,
+                                                   capacity=capacity)
+    elif type_input == 'csv_feature':
+        batch_image, batch_label = tf.train.batch([imgs, img_cat],
+                                                   batch_size=batch_size,
+                                                   num_threads=n_threads,
+                                                   capacity=capacity)
+    elif type_input == 'img_path':
+        batch = tf.train.shuffle_batch([crops],
+                                       enqueue_many=False,
+                                       batch_size=batch_size,
+                                       capacity=capacity,
+                                       min_after_dequeue=min_after_dequeue,
+                                       num_threads=n_threads,
+                                       seed=seed)
 
-    """
-    batch_image, batch_label = tf.train.batch([crops, img_cat],
-                           batch_size=batch_size,
-                           num_threads=n_threads,
-                           capacity=capacity)
+
     # alternatively, we could use shuffle_batch_join to use multiple reader
     # instances, or set shuffle_batch's n_threads to higher than 1.
     return batch_image, batch_label
