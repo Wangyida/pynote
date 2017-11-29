@@ -1,4 +1,5 @@
 from mpl_toolkits.mplot3d import axes3d
+import argparse
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 import numpy as np
@@ -111,7 +112,7 @@ class NDArrayPlotter(object):
 
         return self.spacing
 
-    def render(self, array=None, text=None, azim=-15, elev=15):
+    def render(self, rank, array=None, text=None, azim=-15, elev=15):
 
         if not array:
             array = self.array_
@@ -122,6 +123,7 @@ class NDArrayPlotter(object):
         fig = plt.figure(dpi=120)
         ax = fig.add_subplot(111, projection='3d')
         ax.set_aspect('equal')
+        ax.view_init(180, 30)
 
         element = make_element()
 
@@ -177,9 +179,12 @@ class NDArrayPlotter(object):
         ax.set_ylim((0, highest))
         ax.set_zlim((0, highest))
 
-        # ax.set_title(r"Order-1 Index Tensor $I^{j_1}$")
-        # ax.set_title(r"Order-2 Index Tensor $I^{j_1 j_2}$")
-        ax.set_title(r"Order-3 Index Tensor $I^{j_1 j_2 j_3}$")
+        if rank == 1:
+            ax.set_title(r"Order-1 Distance Tensor $I^{j_1}$")
+        elif rank == 2:
+            ax.set_title(r"Order-2 Distance Tensor $I^{j_1 j_2}$")
+        elif rank == 3:
+            ax.set_title(r"Order-3 Distance Tensor $I^{j_1 j_2 j_3}$")
         # ax.set_title(r"Order-3 Index Tensor: \textbf{\emph{I}}^{\textbf{\emph{j_1}}, \textbf{\emph{j_2}}, \textbf{\emph{j_3}}}")
 
         plt.gca().invert_zaxis()
@@ -256,7 +261,9 @@ class NDArrayPlotter(object):
         return (fig, ax)
 
 
-def main():
+def main(
+        rank,
+        output_file):
 
     """
     colors = plotter.colors
@@ -286,54 +293,78 @@ def main():
 
     colors[1,:,1] = "#FF0000"
     alphas[1,:,1] = 0.75
-    o"""
-    subject = np.arange(0, 216).reshape((6, 6, 6))
-    plotter = NDArrayPlotter(subject, spacing=('even', 0.2, 0.2, 0.2))
-
-    colors = plotter.set_color("#FFFF00")
-    alphas = plotter.set_alpha(0.4)
-
-    for idx in range(6):
-        for idy in range(6):
-            for idz in range(6):
-                if np.abs(idz-idy) % 3 == 0 and np.abs(idx-idz) % 3 != 0:
-                    colors[idx, idy, idz] = "#66FF00"
-                else:
-                    colors[idx, idy, idz] = "#8F00FF"
-
     """
-    subject = np.arange(0,36).reshape((1,6,6))
-    plotter = NDArrayPlotter(subject, spacing=('even', 0.3,0.3,0.3))
+    # gray 696969 purple 8F00FF and green 66FF00 
+    color_useless = "#696969"
+    color_effective = "#8F00FF"
+    if rank == 3:
+        subject = np.arange(0, 216).reshape((6, 6, 6))
+        plotter = NDArrayPlotter(subject, spacing=('even', 0.2, 0.2, 0.2))
+        colors = plotter.set_color(color_useless)
+        alphas = plotter.set_alpha(0.1)
 
-    colors = plotter.set_color("#FFFF00")
-    alphas = plotter.set_alpha(0.4)
+        for idx in range(6):
+            for idy in range(6):
+                for idz in range(6):
+                    if np.abs(idz-idy) % 3 == 0 and np.abs(idx-idz) % 3 != 0:
+                        colors[idx, idy, idz] = color_effective 
+                        alphas[idx, idy, idz] = 0.6
+        # (fig_coord, ax_coors) = plotter.render(text=text_coords)
+        (fig_values, ax_value) = plotter.render(text=text_values, rank=rank)
 
-    for idx in range(1):
-        for idy in range(6):
-            for idz in range(6):
-                if np.abs(idz-idy)%3 == 0:
-                    colors[idx, idy, idz] = "#66FF00"
-                else:
-                    colors[idx, idy, idz] = "#8F00FF"
+    elif rank == 2:
+        subject = np.arange(0, 36).reshape((1, 6, 6))
+        plotter = NDArrayPlotter(subject, spacing=('even', 0.3, 0.3, 0.3))
+        colors = plotter.set_color(color_useless)
+        alphas = plotter.set_alpha(0.1)
 
-    subject = np.arange(0,18).reshape((3,1,6))
-    plotter = NDArrayPlotter(subject, spacing=('even', 0.3,0.3,0.3))
+        for idx in range(1):
+            for idy in range(6):
+                for idz in range(6):
+                    if np.abs(idz-idy) % 3 == 0:
+                        colors[idx, idy, idz] = color_effective 
+                        alphas[idx, idy, idz] = 0.6
+        # (fig_coord, ax_coors) = plotter.render(text=text_coords)
+        (fig_values, ax_value) = plotter.render(text=text_values, rank=rank)
 
-    colors = plotter.set_color("#FFFF00")
-    alphas = plotter.set_alpha(0.4)
+    elif rank == 1:
+        subject = np.arange(0, 18).reshape((3, 1, 6))
+        plotter = NDArrayPlotter(subject, spacing=('even', 0.3, 0.3, 0.3))
+        colors = plotter.set_color(color_useless)
+        alphas = plotter.set_alpha(0.1)
 
-    for idx in range(3):
-        for idy in range(1):
-            for idz in range(6):
-                if np.abs(idz-idx)%3 == 0:
-                    colors[idx, idy, idz] = "#66FF00"
-                else:
-                    colors[idx, idy, idz] = "#8F00FF"
-    """
-    # (fig_coord, ax_coors) = plotter.render(text=text_coords)
-    (fig_values, ax_value) = plotter.render(text=text_values)
-    plt.show()
+        for idx in range(3):
+            for idy in range(1):
+                for idz in range(6):
+                    if np.abs(idz-idx) % 3 == 0:
+                        colors[idx, idy, idz] = color_effective 
+                        alphas[idx, idy, idz] = 0.6
+        # (fig_coord, ax_coors) = plotter.render(text=text_coords)
+        (fig_values, ax_value) = plotter.render(text=text_values, rank=rank)
+
+    else:
+        print('Shit, nothing there')
+
+    # plt.show()
+    plt.savefig(output_file, transparent=True, bbox_inches='tight', frameon=False)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Parser added')
+    parser.add_argument(
+            '-r',
+            action="store",
+            dest="rank",
+            type=int,
+            help='Rank of metric learning')
+    parser.add_argument(
+            '-o',
+            action="store",
+            dest="output_file",
+            default="tensor_i_3.png", 
+            help='Destination for storing results')
+    parser.print_help()
+    results = parser.parse_args()
+    main(
+            rank=results.rank,
+            output_file=results.output_file)
